@@ -17,6 +17,7 @@ source ./comun.sh
 PG_NAME="${PG_NAME:-$(az postgres flexible-server list -g "$RG" --query "[0].name" -o tsv 2>/dev/null || true)}"
 PG_NAME="${PG_NAME:-expressya-pg-$(openssl rand -hex 3)}"
 
+echo "Si los paquetes de ghcr.io son PÚBLICOS, deja el usuario y el token vacíos (solo presiona Enter)."
 read -rp  "Usuario de GitHub (para leer las imágenes de ghcr.io): " GHCR_USER
 read -rsp "Token de GitHub con permiso read:packages (no se muestra): " GHCR_TOKEN; echo
 
@@ -49,10 +50,15 @@ echo "== 3/6 Ambiente de Container Apps"
 az containerapp env show -n "$ENV_NAME" -g "$RG" -o none 2>/dev/null || az containerapp env create -n "$ENV_NAME" -g "$RG" -l "$LOC" -o none
 DOM=$(az containerapp env show -n "$ENV_NAME" -g "$RG" --query properties.defaultDomain -o tsv)
 CORE_URL="https://core.$DOM"; PAGOS_URL="https://pagos.internal.$DOM"
-REG=(--registry-server ghcr.io --registry-username "$GHCR_USER" --registry-password "$GHCR_TOKEN")
+if [ -n "$GHCR_TOKEN" ]; then
+  REG=(--registry-server ghcr.io --registry-username "$GHCR_USER" --registry-password "$GHCR_TOKEN")
+else
+  REG=()      # imágenes públicas: no hace falta credencial
+fi
 RECURSOS=(--cpu 0.25 --memory 0.5Gi)
 
 echo "== 4/6 Migración del esquema (roles de mínimo privilegio, DDL y datos de prueba)"
+az containerapp job show -n migrar -g "$RG" -o none 2>/dev/null && az containerapp job delete -n migrar -g "$RG" --yes -o none
 az containerapp job create -n migrar -g "$RG" --environment "$ENV_NAME" \
   --trigger-type Manual --replica-timeout 600 --replica-retry-limit 0 --parallelism 1 --replica-completion-count 1 \
   --image "$(imagen migrador)" "${REG[@]}" "${RECURSOS[@]}" \
