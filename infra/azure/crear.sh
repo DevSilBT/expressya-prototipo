@@ -7,11 +7,14 @@
 #   - Azure Database for PostgreSQL Flexible Server 16, Burstable B1ms (incluido 12 meses en Azure for Students)
 #   - Container Apps (plan de consumo, escala a cero): core (público) y pagos (interno, sin ruta pública)
 #   - Container Apps Jobs: core-worker (cada 2 min), pagos-worker (cada 5 min) y migrar (manual)
+# Se puede volver a ejecutar si falló a la mitad: reutiliza lo que ya exista.
 # Ningún secreto se imprime: las contraseñas se generan aquí y se guardan como secretos de Container Apps.
 set -euo pipefail
 cd "$(dirname "$0")"
 : "${GHCR_OWNER:?Define GHCR_OWNER con tu usuario u organización de GitHub en minúsculas}"
 source ./comun.sh
+# Si un intento anterior ya creó el servidor en este grupo, se reutiliza (solo hay UN B1ms gratuito).
+PG_NAME="${PG_NAME:-$(az postgres flexible-server list -g "$RG" --query "[0].name" -o tsv 2>/dev/null || true)}"
 PG_NAME="${PG_NAME:-expressya-pg-$(openssl rand -hex 3)}"
 
 read -rp  "Usuario de GitHub (para leer las imágenes de ghcr.io): " GHCR_USER
@@ -29,16 +32,21 @@ done
 az group create -n "$RG" -l "$LOC" -o none
 
 echo "== 2/6 PostgreSQL 16 administrado ($PG_NAME, B1ms, respaldos 7 días). Tarda ~5-10 min"
+if az postgres flexible-server show -g "$RG" -n "$PG_NAME" -o none 2>/dev/null; then
+  echo "   el servidor $PG_NAME ya existe: se reutiliza y se renueva la contraseña del administrador"
+  az postgres flexible-server update -g "$RG" -n "$PG_NAME" --admin-password "$ADMIN_PW" -o none
+else
 az postgres flexible-server create -g "$RG" -n "$PG_NAME" -l "$LOC" \
   --tier Burstable --sku-name Standard_B1ms --storage-size 32 --version 16 \
   --admin-user eyadmin --admin-password "$ADMIN_PW" \
   --public-access 0.0.0.0 --high-availability Disabled --backup-retention 7 --yes -o none
+fi
 az postgres flexible-server parameter set -g "$RG" -s "$PG_NAME" -n azure.extensions -v PGCRYPTO -o none
 HOST=$(az postgres flexible-server show -g "$RG" -n "$PG_NAME" --query fullyQualifiedDomainName -o tsv)
 url() { echo "postgresql://$1:$2@$HOST:5432/$3?sslmode=require"; }
 
 echo "== 3/6 Ambiente de Container Apps"
-az containerapp env create -n "$ENV_NAME" -g "$RG" -l "$LOC" -o none
+az containerapp env show -n "$ENV_NAME" -g "$RG" -o none 2>/dev/null || az containerapp env create -n "$ENV_NAME" -g "$RG" -l "$LOC" -o none
 DOM=$(az containerapp env show -n "$ENV_NAME" -g "$RG" --query properties.defaultDomain -o tsv)
 CORE_URL="https://core.$DOM"; PAGOS_URL="https://pagos.internal.$DOM"
 REG=(--registry-server ghcr.io --registry-username "$GHCR_USER" --registry-password "$GHCR_TOKEN")
