@@ -69,7 +69,7 @@ con las mismas piezas: monolito `core`, servicio `pagos` sin ruta pública, dos 
 | Secretos | Secretos de Container Apps (generados por `crear.sh`, nunca impresos) | |
 
 Diferencias asumidas solo para este ambiente (supuestos técnicos): ST-AZ-01 workers como jobs de 2 y 5 min en lugar de
-procesos continuos; ST-AZ-02 `TIMEOUT_PAGOS_S=30` porque `pagos` puede estar en cero réplicas; ST-AZ-03 la base acepta
+procesos continuos; ST-AZ-02 `TIMEOUT_PAGOS_S=30` porque `pagos` puede estar en cero réplicas; ST-AZ-04 antes de cobrar, `core` consulta `/salud` de `pagos` (hasta 60 s) para despertarlo; sin esto el primer cobro tras un periodo inactivo quedaba INCIERTO por el arranque en frío (observado el 15-nov-2026); ST-AZ-03 la base acepta
 conexiones solo desde servicios de Azure y con TLS (en DigitalOcean serían "fuentes de confianza" de la VPC).
 
 ### Pasos

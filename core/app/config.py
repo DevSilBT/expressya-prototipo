@@ -9,6 +9,7 @@ class Ajustes:
     token_servicio: str = os.environ.get("TOKEN_SERVICIO", "solo-desarrollo")   # core <-> pagos
     pagos_url: str = os.environ.get("PAGOS_URL", "http://localhost:8001")
     timeout_pagos_s: float = float(os.environ.get("TIMEOUT_PAGOS_S", "10"))
+    timeout_despertar_pagos_s: float = float(os.environ.get("TIMEOUT_DESPERTAR_PAGOS_S", "60"))  # ST-AZ-04
     periodo_barrido_s: float = float(os.environ.get("PERIODO_BARRIDO_S", "5"))
     periodo_reparacion_s: float = float(os.environ.get("PERIODO_REPARACION_S", "60"))
     ambiente: str = os.environ.get("AMBIENTE", "local")

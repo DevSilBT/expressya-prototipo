@@ -9,8 +9,18 @@ class ClientePagos:
         self._http = httpx.Client(base_url=base_url or ajustes.pagos_url, timeout=ajustes.timeout_pagos_s,
                                   headers={"X-Servicio-Token": ajustes.token_servicio}, transport=transport)
 
+    def _despertar(self) -> None:
+        """Consulta /salud antes de cobrar. Si Pagos escaló a cero (Azure Container Apps) arranca aquí, con un plazo
+        amplio, y el cobro posterior ya no se pierde por el arranque en frío. Es una lectura: no cobra ni se reintenta
+        nada; si falla, el cobro sigue su curso normal (y un timeout seguirá siendo INCIERTO)."""
+        try:
+            self._http.get("/salud", timeout=ajustes.timeout_despertar_pagos_s)
+        except httpx.HTTPError:
+            pass
+
     def solicitar_cobro(self, pedido_id: str, monto: str, clave_k2: str, corr: str) -> dict:
         """Devuelve el estado informado por Pagos o {'estado': 'INCIERTO'} si no hubo respuesta."""
+        self._despertar()
         try:
             r = self._http.post("/v1/cobros", json={"pedido_id": pedido_id, "monto": monto},
                                 headers={"Idempotency-Key": clave_k2, "X-Correlation-Id": corr})
