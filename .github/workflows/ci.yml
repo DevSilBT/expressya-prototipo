@@ -63,6 +63,7 @@ jobs:
         run: |
           set -o pipefail
           pytest -v tests 2>&1 | tee evidencia/pytest.txt
+          pytest -v tests_pagos 2>&1 | tee evidencia/pytest_pagos.txt
 
       - name: Guardar evidencia
         if: always()
