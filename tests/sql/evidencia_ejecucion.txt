@@ -1,0 +1,23 @@
+# Salida de ./tests/sql/correr_pruebas_sql.sh en PostgreSQL 16.15 (generada el 1-nov-2026)
+== TP-S3-04 · última unidad: 100 clientes concurrentes (pgbench)
+number of clients: 100
+number of transactions actually processed: 100/100
+number of failed transactions: 0 (0.000%)
+verificar_ultima_unidad.sql:12: NOTICE:  TP-S3-04 · solicitudes=100 aceptadas=1 agotado=99 disponible=0
+verificar_ultima_unidad.sql:12: NOTICE:  TP-S3-04 OK: exactamente una reserva, 99 rechazos registrados, disponibilidad 0 (nunca negativa)
+== TP-S3-11 · sin bloqueos mutuos: 50 clientes x 4 reservas con orden de líneas opuesto
+number of transactions actually processed: 200/200
+number of failed transactions: 0 (0.000%)
+ reservas_activas_tienda4 
+--------------------------
+                      200
+(1 row)
+
+== Pruebas funcionales
+pruebas_funcionales.sql:17: NOTICE:  TP-S3-05 OK: 299.999 s CONFIRMADA; 300.000 s EXPIRADA sin COMPROMISO; comprometido=1
+pruebas_funcionales.sql:34: NOTICE:  TP-S3-06 OK: reintento devuelve la misma reserva; otra huella → CLAVE_REUTILIZADA; N1 repetida → un solo COMPROMISO
+pruebas_funcionales.sql:47: NOTICE:  TP-S3-07 OK: disponible antes=10 después=10 (sin barrido); barrido expiró 1 reserva(s)
+pruebas_funcionales.sql:70: NOTICE:  TP-S3-08 OK: déficit 1 visible, SKU bloqueado; tras liberar por agotamiento vuelve a NORMAL
+pruebas_funcionales.sql:88: NOTICE:  TP-S3-09 OK: UPDATE rechazado; aritmética y secuencia de saldos consistentes
+pruebas_funcionales.sql:107: NOTICE:  TP-S3-10 OK: CHECK de 300 s e INV-16 aplicados por la base de datos
+TODAS LAS PRUEBAS SQL PASARON

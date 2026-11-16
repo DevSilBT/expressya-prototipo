@@ -1,0 +1,131 @@
+# CI/CD del prototipo ExpressYa (Equipo 02 · Dinamita)
+#  1. pruebas   : SQL (pgbench, 100 clientes), migrador emulando Azure (sin superusuario) y pytest, contra PostgreSQL 16.
+#                 La salida queda como artefacto "evidencia-pruebas" (cierra AR-12 del SDD).
+#  2. imagenes  : construye y publica core, pagos y migrador en ghcr.io (solo en main).
+#  3. desplegar : actualiza el ambiente de prueba en Azure Container Apps (solo si existe la variable AZURE_RG).
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pruebas:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 3s --health-retries 20
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pruebas SQL (TP-S3-04 a TP-S3-11)
+        run: |
+          mkdir -p evidencia
+          docker run --rm --network host -v "$PWD:/w" -w /w \
+            -e PGHOST -e PGUSER -e PGPASSWORD postgres:16 \
+            bash tests/sql/correr_pruebas_sql.sh 2>&1 | tee evidencia/pruebas_sql.txt
+          grep -q "TODAS LAS PRUEBAS SQL PASARON" evidencia/pruebas_sql.txt
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Dependencias
+        run: pip install -r core/requirements.txt pytest
+
+      - name: Migrador con un administrador sin superusuario (como Azure Flexible Server)
+        run: |
+          docker run --rm --network host -e PGHOST -e PGUSER -e PGPASSWORD postgres:16 \
+            psql -v ON_ERROR_STOP=1 -c "CREATE ROLE azadmin LOGIN CREATEROLE CREATEDB PASSWORD 'azadmin'"
+          export ADMIN_URL="postgresql://azadmin:azadmin@localhost:5432/postgres"
+          export CORE_DB_PASSWORD=core-ci PAGOS_DB_PASSWORD=pagos-ci
+          python db/migrar.py 2>&1 | tee evidencia/migrador.txt
+          python db/migrar.py 2>&1 | tee -a evidencia/migrador.txt     # segunda vez: no debe aplicar nada
+          tail -1 evidencia/migrador.txt | grep -q "0 archivo(s) nuevo(s)"
+
+      - name: Pruebas de la aplicación (pytest)
+        env:
+          TEST_PG_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/postgres
+        run: |
+          set -o pipefail
+          pytest -v tests 2>&1 | tee evidencia/pytest.txt
+
+      - name: Guardar evidencia
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidencia-pruebas
+          path: evidencia/
+
+  imagenes:
+    needs: pruebas
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      owner: ${{ steps.nombre.outputs.owner }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: nombre
+        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: core
+        uses: docker/build-push-action@v6
+        with:
+          context: ./core
+          push: true
+          tags: ghcr.io/${{ steps.nombre.outputs.owner }}/expressya-core:${{ github.sha }},ghcr.io/${{ steps.nombre.outputs.owner }}/expressya-core:latest
+      - name: pagos
+        uses: docker/build-push-action@v6
+        with:
+          context: ./pagos
+          push: true
+          tags: ghcr.io/${{ steps.nombre.outputs.owner }}/expressya-pagos:${{ github.sha }},ghcr.io/${{ steps.nombre.outputs.owner }}/expressya-pagos:latest
+      - name: migrador
+        uses: docker/build-push-action@v6
+        with:
+          context: ./db
+          push: true
+          tags: ghcr.io/${{ steps.nombre.outputs.owner }}/expressya-migrador:${{ github.sha }},ghcr.io/${{ steps.nombre.outputs.owner }}/expressya-migrador:latest
+
+  desplegar:
+    needs: imagenes
+    if: vars.AZURE_RG != ''
+    runs-on: ubuntu-24.04
+    environment: azure-prueba
+    permissions:
+      contents: read
+      id-token: write          # OIDC: sin contraseñas de Azure guardadas en GitHub
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Migrar y actualizar imágenes
+        env:
+          RG: ${{ vars.AZURE_RG }}
+          GHCR_OWNER: ${{ needs.imagenes.outputs.owner }}
+          TAG: ${{ github.sha }}
+        run: bash infra/azure/actualizar.sh

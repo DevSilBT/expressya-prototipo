@@ -1,0 +1,51 @@
+# Entorno local idéntico en estructura a producción (ADR-17): core + worker, pagos + worker, PostgreSQL 16.
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-solo-desarrollo}
+    ports: ["5432:5432"]
+    volumes:
+      - ./db/core:/docker-entrypoint-initdb.d/core:ro
+      - ./db/pagos:/docker-entrypoint-initdb.d/pagos:ro
+      - ./db/inicializar.sh:/docker-entrypoint-initdb.d/00_inicializar.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      retries: 20
+
+  core:
+    build: ./core
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-solo-desarrollo}@postgres:5432/expressya
+      PAGOS_URL: http://pagos:8001
+    ports: ["8000:8000"]
+    depends_on: { postgres: { condition: service_healthy } }
+
+  core-worker:
+    build: ./core
+    command: python -m app.worker
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-solo-desarrollo}@postgres:5432/expressya
+      PAGOS_URL: http://pagos:8001
+    depends_on: { postgres: { condition: service_healthy } }
+
+  pagos:
+    build: ./pagos
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-solo-desarrollo}@postgres:5432/expressya_pagos
+      CORE_URL: http://core:8000
+    ports: ["8001:8001"]
+    depends_on: { postgres: { condition: service_healthy } }
+
+  pagos-worker:
+    build: ./pagos
+    command: python -m app.worker
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-solo-desarrollo}@postgres:5432/expressya_pagos
+      CORE_URL: http://core:8000
+    depends_on: { postgres: { condition: service_healthy } }

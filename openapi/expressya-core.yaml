@@ -1,0 +1,239 @@
+openapi: 3.1.0
+info:
+  title: ExpressYa Core (monolito modular)
+  version: 0.3.0
+  description: >
+    API física del diseño de la Semana 3 · Equipo 02 · Dinamita. Errores en application/problem+json (RFC 9457).
+    Toda operación con efecto exige Idempotency-Key; reintentar SIEMPRE con la misma clave (ADR-05).
+servers:
+  - url: https://api.expressya.example
+    description: Producción (DigitalOcean App Platform)
+  - url: http://localhost:8000
+    description: Local (docker compose)
+security:
+  - bearerJWT: []
+tags:
+  - name: Inventario (M3)
+  - name: Pedidos (M2)
+  - name: Interno
+paths:
+  /v1/tiendas/{tienda_id}/disponibilidad:
+    get:
+      tags: [Inventario (M3)]
+      operationId: consultarDisponibilidad
+      summary: API-INV-01 ConsultarDisponibilidad
+      security: []
+      parameters:
+        - { name: tienda_id, in: path, required: true, schema: { type: integer, minimum: 1, maximum: 32767 } }
+        - name: sku
+          in: query
+          required: true
+          style: form
+          explode: true
+          schema: { type: array, minItems: 1, maxItems: 100, items: { $ref: '#/components/schemas/Sku' } }
+      responses:
+        '200':
+          description: Disponibilidad calculada por la autoridad (INV-01)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tienda_id: { type: integer }
+                  origen: { type: string, enum: [AUTORIDAD] }
+                  skus:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        sku: { $ref: '#/components/schemas/Sku' }
+                        disponible: { type: integer, minimum: 0 }
+                        estado: { type: string, enum: [NORMAL, SOBRECOMPROMETIDA, EN_VERIFICACION] }
+  /v1/pedidos:
+    post:
+      tags: [Pedidos (M2)]
+      operationId: iniciarCheckout
+      summary: API-PED-01 IniciarCheckout (asigna tienda, ADR-13, y reserva 300 s)
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [codigo_postal, lineas]
+              properties:
+                codigo_postal: { type: string, pattern: '^[0-9]{5}$' }
+                lineas:
+                  type: array
+                  minItems: 1
+                  maxItems: 50
+                  items:
+                    type: object
+                    required: [sku, cantidad]
+                    properties:
+                      sku: { $ref: '#/components/schemas/Sku' }
+                      cantidad: { type: integer, minimum: 1, maximum: 99 }
+                envio: { type: string, format: decimal, default: '0' }
+                propina: { type: string, format: decimal, default: '0' }
+                descuento_promocion: { type: string, format: decimal, default: '0' }
+      responses:
+        '201':
+          description: Pedido RESERVADO; la reserva vence exactamente 300 s después de creada
+          content: { application/json: { schema: { $ref: '#/components/schemas/Pedido' } } }
+        '409':
+          description: AGOTADO o SKU_BLOQUEADO. No se reservó ninguna línea; el pedido queda ESPERANDO_DECISION (RF07)
+          content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problema' } } }
+        '422': { $ref: '#/components/responses/Invalida' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+  /v1/pedidos/{pedido_id}:
+    get:
+      tags: [Pedidos (M2)]
+      operationId: consultarPedido
+      summary: API-PED-04 ConsultarPedido
+      parameters: [ { $ref: '#/components/parameters/PedidoId' } ]
+      responses:
+        '200': { description: Pedido, content: { application/json: { schema: { $ref: '#/components/schemas/Pedido' } } } }
+        '404': { description: No encontrado, content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problema' } } } }
+  /v1/pedidos/{pedido_id}/pago:
+    post:
+      tags: [Pedidos (M2)]
+      operationId: iniciarPago
+      summary: API-PED-03 IniciarPago (una sola llamada de cobro por K2; un timeout deja PAGO_INCIERTO)
+      parameters:
+        - $ref: '#/components/parameters/PedidoId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202':
+          description: Estado del pedido tras el intento (PAGADO, NO_PAGADO, PAGO_INCIERTO o PAGO_SIN_EXISTENCIA)
+          content: { application/json: { schema: { $ref: '#/components/schemas/Pedido' } } }
+        '409':
+          description: RESERVA_VENCIDA (CA-04, INV-15), PAGO_EN_CURSO (ADR-08) o ESTADO_INVALIDO
+          content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problema' } } }
+  /internal/v1/eventos-pago:
+    post:
+      tags: [Interno]
+      operationId: recibirEventoPago
+      summary: Entrega de la bandeja de salida de Pagos (deduplicado por notificacion_id)
+      security: [ { tokenServicio: [] } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pedido_id, pago_id, estado]
+              properties:
+                pedido_id: { type: string, format: uuid }
+                pago_id: { type: string, format: uuid }
+                estado: { type: string, enum: [APROBADO, RECHAZADO, INCIERTO, EN_REVISION_FINANZAS] }
+                notificacion_id: { type: string }
+                aprobado_en_pasarela: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Desenlace aplicado o recuperado (misma N1 → mismo resultado)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  desenlace: { type: string, enum: [PAGADO, NO_PAGADO, PAGO_INCIERTO, PAGO_SIN_EXISTENCIA, SIN_CAMBIO] }
+                  repetida: { type: boolean }
+  /internal/v1/eventos-ajuste:
+    post:
+      tags: [Interno]
+      operationId: recibirEventoAjuste
+      summary: Resultado de un ajuste de cobro (APLICADO → REEMBOLSADO y aviso REEMBOLSO_CONFIRMADO)
+      security: [ { tokenServicio: [] } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ajuste_id, pedido_id, estado]
+              properties:
+                ajuste_id: { type: string, format: uuid }
+                pedido_id: { type: string, format: uuid }
+                estado: { type: string }
+                monto: { type: string }
+      responses:
+        '200': { description: Aplicado }
+components:
+  securitySchemes:
+    bearerJWT: { type: http, scheme: bearer, bearerFormat: JWT, description: 'HS256; claims sub, roles[], tienda_id' }
+    tokenServicio: { type: apiKey, in: header, name: X-Servicio-Token }
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Clave de idempotencia (K1, K2…). Misma clave y mismo cuerpo → mismo resultado; otro cuerpo → CLAVE_REUTILIZADA.
+      schema: { type: string, minLength: 8, maxLength: 100 }
+    CorrelationId:
+      name: X-Correlation-Id
+      in: header
+      required: false
+      schema: { type: string, format: uuid }
+    PedidoId:
+      name: pedido_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  responses:
+    Invalida:
+      description: Solicitud inválida (CANTIDAD_INVALIDA, CLAVE_REUTILIZADA, SIN_COBERTURA)
+      content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problema' } } }
+    NoAutenticado:
+      description: Falta o es inválido el token
+      content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problema' } } }
+  schemas:
+    Sku: { type: string, pattern: '^[A-Z0-9-]{3,40}$' }
+    Pedido:
+      type: object
+      properties:
+        pedido_id: { type: string, format: uuid }
+        tienda_id: { type: integer }
+        estado:
+          type: string
+          enum: [EN_CHECKOUT, ESPERANDO_DECISION, RESERVADO, PAGO_SOLICITADO, PAGO_INCIERTO, PAGADO, EN_PREPARACION, COMPLETO,
+                 PARCIAL, CANCELADO_TOTAL, NO_PAGADO, ABANDONADO, PAGO_SIN_EXISTENCIA, REEMBOLSADO, CANCELADO_POR_CLIENTE]
+        subtotal_mercancia: { type: string, format: decimal }
+        envio: { type: string, format: decimal }
+        propina: { type: string, format: decimal }
+        descuento_promocion: { type: string, format: decimal }
+        total: { type: string, format: decimal }
+        lineas:
+          type: array
+          items:
+            type: object
+            properties:
+              linea_id: { type: string, format: uuid }
+              sku: { $ref: '#/components/schemas/Sku' }
+              cantidad_pedida: { type: integer }
+              precio_unitario: { type: string, format: decimal }
+              estado: { type: string }
+        reserva:
+          type: object
+          properties:
+            resultado: { type: string, enum: [ACEPTADA, AGOTADO, SKU_BLOQUEADO] }
+            reserva_id: { type: string, format: uuid }
+            creada_en: { type: string, format: date-time }
+            expira_en: { type: string, format: date-time, description: 'creada_en + 300 s (hora del servidor de BD)' }
+            solicitud_seq: { type: integer, description: 'Orden de llegada (RN09)' }
+    Problema:
+      type: object
+      required: [type, title, status, code]
+      properties:
+        type: { type: string, format: uri }
+        title: { type: string }
+        status: { type: integer }
+        code:
+          type: string
+          enum: [AGOTADO, SKU_BLOQUEADO, RESERVA_VENCIDA, RESERVA_NO_ACTIVA, PAGO_EN_CURSO, ESTADO_INVALIDO, CLAVE_REUTILIZADA,
+                 CANTIDAD_INVALIDA, SIN_COBERTURA, NO_AUTORIZADO, NO_AUTENTICADO, NO_ENCONTRADO, PAGOS_NO_DISPONIBLE]
+        detail: { type: string }
+        correlacion_id: { type: string }
+        lineas: { type: array, items: { type: object } }

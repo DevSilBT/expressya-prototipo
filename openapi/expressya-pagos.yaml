@@ -1,0 +1,58 @@
+openapi: 3.1.0
+info:
+  title: ExpressYa Pagos y Conciliación (M4)
+  version: 0.3.0
+  description: Servicio aparte con base de datos propia (ADR-17). La pasarela no garantiza idempotencia, consulta ni reembolso parcial (Cliente 1-nov).
+servers: [ { url: http://localhost:8001 } ]
+security: [ { tokenServicio: [] } ]
+paths:
+  /v1/cobros:
+    post:
+      operationId: solicitarCobro
+      summary: API-PAG-01 · una sola llamada a la pasarela por K2
+      parameters: [ { name: Idempotency-Key, in: header, required: true, schema: { type: string } } ]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [pedido_id, monto], properties: { pedido_id: { type: string, format: uuid }, monto: { type: string, format: decimal } } } } }
+      responses:
+        '202': { description: 'APROBADO, RECHAZADO o INCIERTO (timeout = resultado desconocido, no rechazo)' }
+        '409': { description: PAGO_EN_CURSO (ya hay un cobro vivo para el pedido) }
+        '422': { description: CLAVE_REUTILIZADA }
+  /v1/notificaciones:
+    post:
+      operationId: registrarResultadoPago
+      summary: API-PAG-02 · notificación de la pasarela; deduplicada por notificacion_id
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [pago_id, notificacion_id, resultado], properties: { pago_id: { type: string }, notificacion_id: { type: string }, resultado: { type: string, enum: [APROBADO, RECHAZADO] }, aprobado_en: { type: string, format: date-time } } } } }
+      responses: { '200': { description: Estado vigente del pago } }
+  /v1/ajustes:
+    post:
+      operationId: solicitarAjusteCobro
+      summary: API-PAG-04 · reembolso de mercancía; otros componentes se escalan (PD05)
+      parameters: [ { name: Idempotency-Key, in: header, required: true, schema: { type: string } } ]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [pedido_id, componente, tipo, monto, motivo], properties: { pedido_id: { type: string }, componente: { type: string, enum: [MERCANCIA, ENVIO, PROPINA, PROMOCION] }, tipo: { type: string, enum: [PARCIAL, TOTAL, ESCALADO] }, monto: { type: string }, motivo: { type: string } } } } }
+      responses:
+        '202': { description: 'APLICADO, INCIERTO o PENDIENTE_MANUAL' }
+        '409': { description: SIN_PAGO_APROBADO }
+        '422': { description: MONTO_EXCEDE_COBRADO }
+  /v1/resoluciones:
+    post:
+      operationId: registrarResolucionManual
+      summary: API-PAG-05 · Finanzas resuelve un pago o ajuste incierto con evidencia
+      security: [ { bearerJWT: [] } ]
+      responses: { '200': { description: Resuelto }, '403': { description: Requiere rol FINANZAS } }
+  /v1/pagos:
+    get:
+      operationId: listarPagosFinales
+      summary: Pagos finales para el ciclo de reparación (ADR-12)
+      parameters:
+        - { name: estado, in: query, required: true, schema: { type: array, items: { type: string } } }
+        - { name: desde, in: query, required: true, schema: { type: string, format: date-time } }
+      responses: { '200': { description: 'Lista de {pago_id, pedido_id, estado, notificacion_id}' } }
+components:
+  securitySchemes:
+    tokenServicio: { type: apiKey, in: header, name: X-Servicio-Token }
+    bearerJWT: { type: http, scheme: bearer, bearerFormat: JWT }
