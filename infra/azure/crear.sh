@@ -39,7 +39,7 @@ else
 az postgres flexible-server create -g "$RG" -n "$PG_NAME" -l "$LOC" \
   --tier Burstable --sku-name Standard_B1ms --storage-size 32 --version 16 \
   --admin-user eyadmin --admin-password "$ADMIN_PW" \
-  --public-access 0.0.0.0 --high-availability Disabled --backup-retention 7 --yes -o none
+  --public-access 0.0.0.0 --backup-retention 7 --yes -o none
 fi
 az postgres flexible-server parameter set -g "$RG" -s "$PG_NAME" -n azure.extensions -v PGCRYPTO -o none
 HOST=$(az postgres flexible-server show -g "$RG" -n "$PG_NAME" --query fullyQualifiedDomainName -o tsv)
