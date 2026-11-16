@@ -5,7 +5,7 @@ En local, docker compose carga el DDL con db/inicializar.sh. En la nube no hay s
      (expressya_core y expressya_pagos, ADR-25) y una base para cada uno, de la que cada rol es dueño (ADR-17).
   2. Crea la extensión pgcrypto en cada base (en Azure requiere el parámetro azure.extensions = PGCRYPTO).
   3. Conectado como el rol dueño, aplica en orden los archivos .sql que aún no se aplicaron, cada uno en su transacción,
-     y lo registra en public.migracion_aplicada. Volver a ejecutarlo no repite nada (idempotente).
+     y lo registra en migracion.aplicada. Volver a ejecutarlo no repite nada (idempotente).
 
 Variables: ADMIN_URL, CORE_DB_PASSWORD, PAGOS_DB_PASSWORD, CARGAR_DATOS_DEMO (1 por defecto).
 Uso: python migrar.py
@@ -49,6 +49,12 @@ def preparar(admin: psycopg.Connection, base: str, rol: str, clave: str) -> None
         print(f"base {base} creada (dueño {rol})")
     with psycopg.connect(url(base), autocommit=True) as c:
         c.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto")
+        # En Azure el esquema public de las bases nuevas pertenece a azure_pg_admin: el rol dueño de la base no puede
+        # crear en él. El DDL usa sus propios esquemas; aquí solo se garantiza el uso de public (pgcrypto vive ahí).
+        try:
+            c.execute(sql.SQL("GRANT USAGE ON SCHEMA public TO {}").format(sql.Identifier(rol)))
+        except psycopg.Error as exc:
+            print(f"aviso: no se pudo otorgar USAGE en public a {rol}: {exc}")
 
 
 def aplicar(base: str, rol: str, clave: str, carpeta: str) -> int:
@@ -57,16 +63,18 @@ def aplicar(base: str, rol: str, clave: str, carpeta: str) -> int:
         archivos = [a for a in archivos if "datos_demo" not in a.name]
     n = 0
     with psycopg.connect(url(base, rol, clave), autocommit=True) as c:
-        c.execute("""CREATE TABLE IF NOT EXISTS public.migracion_aplicada (
+        # Registro de migraciones en un esquema propio del rol (no en public; ver preparar()).
+        c.execute("CREATE SCHEMA IF NOT EXISTS migracion")
+        c.execute("""CREATE TABLE IF NOT EXISTS migracion.aplicada (
                          archivo text PRIMARY KEY, aplicada_en timestamptz NOT NULL DEFAULT clock_timestamp())""")
-        hechas = {r[0] for r in c.execute("SELECT archivo FROM public.migracion_aplicada").fetchall()}
+        hechas = {r[0] for r in c.execute("SELECT archivo FROM migracion.aplicada").fetchall()}
         for a in archivos:
             nombre = f"{carpeta}/{a.name}"
             if nombre in hechas:
                 continue
             with c.transaction():
                 c.execute(a.read_text(encoding="utf-8"))     # sin parámetros: admite varias sentencias y bloques $$
-                c.execute("INSERT INTO public.migracion_aplicada (archivo) VALUES (%s)", (nombre,))
+                c.execute("INSERT INTO migracion.aplicada (archivo) VALUES (%s)", (nombre,))
             print(f"aplicado {nombre}")
             n += 1
     return n

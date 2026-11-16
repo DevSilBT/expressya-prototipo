@@ -50,7 +50,7 @@ jobs:
       - name: Migrador con un administrador sin superusuario (como Azure Flexible Server)
         run: |
           docker run --rm --network host -e PGHOST -e PGUSER -e PGPASSWORD postgres:16 \
-            psql -v ON_ERROR_STOP=1 -c "CREATE ROLE azadmin LOGIN CREATEROLE CREATEDB PASSWORD 'azadmin'"
+            bash -c "psql -v ON_ERROR_STOP=1 -c \"CREATE ROLE azure_pg_admin NOLOGIN\" -c \"CREATE ROLE azadmin LOGIN CREATEROLE CREATEDB IN ROLE azure_pg_admin PASSWORD 'azadmin'\" && psql -v ON_ERROR_STOP=1 -d template1 -c \"ALTER SCHEMA public OWNER TO azure_pg_admin\" -c \"REVOKE CREATE ON SCHEMA public FROM PUBLIC\""
           export ADMIN_URL="postgresql://azadmin:azadmin@localhost:5432/postgres"
           export CORE_DB_PASSWORD=core-ci PAGOS_DB_PASSWORD=pagos-ci
           python db/migrar.py 2>&1 | tee evidencia/migrador.txt
