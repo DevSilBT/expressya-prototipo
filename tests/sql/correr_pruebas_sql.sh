@@ -16,4 +16,8 @@ pgbench -n -c 50 -j 10 -t 4 -f tests/sql/orden_inverso.pgbench.sql "$DB" | grep 
 psql -q -d "$DB" -c "SELECT count(*) AS reservas_activas_tienda4 FROM inventario.reserva WHERE tienda_id = 4 AND estado = 'ACTIVA'"
 echo "== Pruebas funcionales"
 psql -q -v ON_ERROR_STOP=1 -d "$DB" -f tests/sql/pruebas_funcionales.sql
+echo "== Pruebas de C3 (surtido, faltante, conteo y ajuste)"
+psql -q -v ON_ERROR_STOP=1 -d "$DB" -f tests/sql/pruebas_c3.sql
+echo "== Reconstrucción de todos los saldos (al final)"
+psql -q -v ON_ERROR_STOP=1 -d "$DB" -f tests/sql/reconstruccion.sql
 echo "TODAS LAS PRUEBAS SQL PASARON"

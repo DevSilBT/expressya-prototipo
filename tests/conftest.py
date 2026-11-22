@@ -25,7 +25,7 @@ def base_de_datos():
     with psycopg.connect(ADMIN, autocommit=True) as c:
         c.execute(f"CREATE DATABASE {NOMBRE}")
     with psycopg.connect(URL, autocommit=True) as c:
-        for f in ("001_esquemas_y_tablas.sql", "002_funciones_inventario.sql", "003_datos_demo.sql", "004_carga_y_reconstruccion.sql"):
+        for f in ("001_esquemas_y_tablas.sql", "002_funciones_inventario.sql", "003_datos_demo.sql", "004_carga_y_reconstruccion.sql", "005_operacion_c3.sql", "006_datos_c3.sql"):
             c.execute((RAIZ / "db" / "core" / f).read_text())
     from app.db import pool
     pool.open(wait=True)
