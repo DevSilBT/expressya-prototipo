@@ -63,7 +63,7 @@ if FASE == "1":
           f"HTTP {s} {f.get('resultado')} · Y: {y['estado']}, disponible {y['disponible']}")
     s, r = http("POST", f"/v1/lineas/{ls['SKU-Y']}/surtido", "PICKER", {"cantidad": 1}, f"s-{uuid.uuid4()}")
     check("5. Surtida la Y encontrada; el pedido sigue en preparación", r.get("estado_pedido") == "EN_PREPARACION", f"HTTP {s}")
-    s, _ = http("POST", f"/v1/faltantes/{st['fid']}/validacion", "PICKER", {"valido": True, "evidencia": "yo"}, f"v-{uuid.uuid4()}")
+    s, _ = http("POST", f"/v1/faltantes/{st['fid']}/validacion", "PICKER", {"valido": True, "evidencia": "lo valido yo"}, f"v-{uuid.uuid4()}")
     check("6. El picker no puede validar su faltante (INV-19)", s == 403, f"HTTP {s}")
     k = f"v-{uuid.uuid4()}"
     s, v = http("POST", f"/v1/faltantes/{st['fid']}/validacion", "SUPERVISOR", {"valido": True, "evidencia": "Revisé anaquel y bodega"}, k)
@@ -89,7 +89,7 @@ elif FASE == "2":
     b = disp(4, "SKU-B")
     check(f"11. AT-07: lógica {log}, física {log - 2} → discrepancia y SKU bloqueado", c.get("diferencia") == -2 and b["disponible"] == 0,
           f"HTTP {s} {c.get('resultado')} · B: {b['estado']}, disponible {b['disponible']}")
-    s, _ = http("POST", f"/v1/ajustes-inventario/{c['ajuste_id']}/autorizacion", "ENCARGADO", {"aprobar": True, "evidencia": "yo"}, f"a-{uuid.uuid4()}")
+    s, _ = http("POST", f"/v1/ajustes-inventario/{c['ajuste_id']}/autorizacion", "ENCARGADO", {"aprobar": True, "evidencia": "lo conté yo"}, f"a-{uuid.uuid4()}")
     s2, a = http("POST", f"/v1/ajustes-inventario/{c['ajuste_id']}/autorizacion", "SUPERVISOR", {"aprobar": True, "evidencia": "Reconteo con foto"}, f"a-{uuid.uuid4()}")
     check("12. Ajuste: quien contó no autoriza (403); otra persona sí", s == 403 and a.get("resultado") == "APLICADO",
           f"{s} / {s2} {a.get('resultado')} vendible={a.get('vendible')} estado={a.get('estado_existencia')}")
