@@ -32,7 +32,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Pruebas SQL (TP-S3-04 a TP-S3-11)
+      - name: Pruebas SQL (TP-S3-04 a TP-S3-12)
         run: |
           mkdir -p evidencia
           docker run --rm --network host -v "$PWD:/w" -w /w \
