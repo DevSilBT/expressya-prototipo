@@ -129,3 +129,27 @@ def test_at10_caida_a_mitad_de_la_transaccion_no_deja_huerfanos(monkeypatch):
     with transaccion() as conn:
         n = conn.execute("SELECT count(*) AS n FROM pedidos.pedido WHERE clave_checkout = %s", (clave,)).fetchone()["n"]
     assert n == 0
+
+
+def test_c1_cinco_tiendas_con_los_tres_saldos():
+    """C1 · alcance §3: cinco tiendas con inventario y saldos disponible / reservado / comprometido por tienda."""
+    for tienda in range(1, 6):
+        r = cliente.get(f"/v1/tiendas/{tienda}/disponibilidad", params={"sku": ["SKU-X", "SKU-Y", "SKU-Z"]})
+        assert r.status_code == 200
+        skus = r.json()["skus"]
+        assert len(skus) == 3 and all({"disponible", "reservado", "comprometido"} <= set(s) for s in skus)
+
+
+def test_c1_reconstruir_saldo_despues_de_una_compra(token_cliente, pagos_falso):
+    """C1 · el saldo se reconstruye desde los movimientos auditables después de reservar y pagar por la API."""
+    r = cliente.post("/v1/pedidos", headers={"Authorization": token_cliente, "Idempotency-Key": f"K1-{uuid.uuid4()}"},
+                     json={"codigo_postal": "53400", "lineas": [{"sku": "SKU-Y", "cantidad": 2}]})
+    assert r.status_code == 201 and r.json()["tienda_id"] == 5
+    p = cliente.post(f"/v1/pedidos/{r.json()['pedido_id']}/pago",
+                     headers={"Authorization": token_cliente, "Idempotency-Key": f"K2-{uuid.uuid4()}"})
+    assert p.json()["estado"] == "PAGADO"
+    with transaccion() as conn:
+        filas = conn.execute("SELECT * FROM inventario.reconstruir_saldos(5::smallint, 'SKU-Y')").fetchall()
+    saldos = {f["saldo"]: f for f in filas}
+    assert all(f["coincide"] for f in filas)
+    assert saldos["vendible"]["desde_movimientos"] == 12 and saldos["comprometido"]["desde_movimientos"] == 2

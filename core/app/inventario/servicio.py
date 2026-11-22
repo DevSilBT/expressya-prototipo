@@ -5,7 +5,9 @@ from psycopg.types.json import Jsonb
 
 def disponibilidad(conn: Connection, tienda_id: int, skus: list[str]) -> list[dict]:
     filas = conn.execute(
-        """SELECT e.sku, inventario.disponible(e.tienda_id, e.sku) AS disponible, e.estado
+        """SELECT e.sku, inventario.disponible(e.tienda_id, e.sku) AS disponible,
+                  inventario.reservas_vigentes(e.tienda_id, e.sku, clock_timestamp()) AS reservado,
+                  e.comprometido, e.vendible, e.estado
              FROM inventario.existencia e WHERE e.tienda_id = %s AND e.sku = ANY(%s) ORDER BY e.sku""",
         (tienda_id, skus),
     ).fetchall()
