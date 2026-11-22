@@ -103,3 +103,18 @@ conexiones solo desde servicios de Azure y con TLS (en DigitalOcean serían "fue
 Los ~10 s por ejecución son una estimación: revisa **Cost Management** en el portal la primera semana y el saldo del
 crédito en microsoftazuresponsorships.com. Si los paquetes de ghcr.io son privados, borra versiones viejas para no
 pasar la cuota gratuita de almacenamiento de GitHub Packages.
+
+## C3 · Surtido, discrepancia y cancelación parcial (M5 Operación)
+
+| Endpoint | Rol | Qué hace |
+|---|---|---|
+| `POST /v1/pedidos/{id}/preparacion` | PICKER, SUPERVISOR, ENCARGADO | PAGADO → EN_PREPARACION |
+| `POST /v1/lineas/{id}/surtido` | PICKER | Surte unidades; descuenta vendible y comprometido (ADR-02) |
+| `POST /v1/lineas/{id}/faltantes` | PICKER | Reporta faltante; abre discrepancia y bloquea la venta del SKU |
+| `POST /v1/faltantes/{id}/validacion` | SUPERVISOR (≠ picker) | Valida: cancelación parcial, reembolso único de la mercancía (K4), conteo dirigido |
+| `POST /v1/tiendas/{t}/existencias/{sku}/conteos` | PICKER, SUPERVISOR, ENCARGADO | Conteo físico; con diferencia abre discrepancia, bloquea y pide ajuste |
+| `POST /v1/ajustes-inventario/{id}/autorizacion` | SUPERVISOR, ENCARGADO (≠ solicitante) | Aplica o rechaza el ajuste |
+| `GET /v1/tiendas/{t}/existencias/{sku}/historial` | AUDITOR, SUPERVISOR, ENCARGADO | Quién, qué, cuándo, por qué y pedido afectado; reconstrucción del saldo |
+| `GET /v1/pedidos/{id}/historial` | CLIENTE (propio), ATENCION, SUPERVISOR, AUDITOR | Faltantes, cancelaciones, movimientos, avisos y eventos del pedido |
+
+Pruebas: `tests/sql/pruebas_c3.sql` (TP-C3-01 a 03), `tests/test_c3.py` y, en Azure, `bash infra/azure/probar_c3.sh`.

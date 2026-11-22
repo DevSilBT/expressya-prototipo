@@ -114,6 +114,9 @@ def historial_pedido(conn, pedido_id: str) -> dict:
                  FROM inventario.movimiento
                 WHERE (doc_tipo = 'PEDIDO' AND doc_id = %s) OR (doc_tipo = 'RESERVA' AND doc_id = ANY(%s))
                 ORDER BY movimiento_id""", (pedido_id, reservas)).fetchall(),
+        "notificaciones": conn.execute(
+            """SELECT tipo, canal, estado, datos, creada_en FROM notificaciones.notificacion
+                WHERE datos->>'pedido_id' = %s ORDER BY creada_en, canal""", (pedido_id,)).fetchall(),
         "eventos": conn.execute(
             """SELECT tipo, hora_servidor, actor, correlacion_id, datos FROM trazabilidad.evento_bitacora
                 WHERE pedido_id = %s ORDER BY hora_servidor""", (pedido_id,)).fetchall(),

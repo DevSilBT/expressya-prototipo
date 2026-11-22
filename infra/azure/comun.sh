@@ -26,3 +26,19 @@ migrar() {
   done
   echo "La migración no terminó en 10 minutos" >&2; return 1
 }
+
+# Ejecuta un job (core-worker, pagos-worker…) una vez, a demanda, y espera a que termine.
+ejecutar_job() {
+  local job="$1" exec estado
+  exec=$(az containerapp job start -n "$job" -g "$RG" --query name -o tsv)
+  for _ in $(seq 1 30); do
+    estado=$(az containerapp job execution show -n "$job" -g "$RG" --job-execution-name "$exec" \
+               --query properties.status -o tsv 2>/dev/null || true)
+    case "$estado" in
+      Succeeded) echo "$job: $exec terminó"; return 0 ;;
+      Failed|Stopped|Degraded) echo "$job: $exec $estado" >&2; return 1 ;;
+    esac
+    sleep 5
+  done
+  echo "$job: $exec no terminó en 150 s" >&2; return 1
+}
