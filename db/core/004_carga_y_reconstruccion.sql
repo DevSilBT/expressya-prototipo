@@ -36,7 +36,7 @@ SELECT inventario.cargar_existencia(t::smallint, s, q)
                (5,'SKU-X',2),(5,'SKU-Y',12),(5,'SKU-Z',6)) AS v(t, s, q)
  WHERE NOT EXISTS (SELECT 1 FROM inventario.existencia e WHERE e.tienda_id = v.t AND e.sku = v.s);
 INSERT INTO pedidos.zona_cobertura (tienda_id, codigo_postal, distancia_km) VALUES
-  (3,'53200',1.0), (4,'53300',1.5), (5,'53400',2.0), (5,'53150',4.0)
+  (3,'53200',1.0), (4,'53300',1.5), (5,'53400',2.0)
 ON CONFLICT DO NOTHING;
 
 -- 4) Reconstrucción: cada saldo se recalcula sumando los deltas de su historial y se compara con el registrado.
