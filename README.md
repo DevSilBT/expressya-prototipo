@@ -118,3 +118,16 @@ pasar la cuota gratuita de almacenamiento de GitHub Packages.
 | `GET /v1/pedidos/{id}/historial` | CLIENTE (propio), ATENCION, SUPERVISOR, AUDITOR | Faltantes, cancelaciones, movimientos, avisos y eventos del pedido |
 
 Pruebas: `tests/sql/pruebas_c3.sql` (TP-C3-01 a 03), `tests/test_c3.py` y, en Azure, `bash infra/azure/probar_c3.sh`.
+
+## Interfaz web de demostración (`/app`)
+
+El mismo contenedor `core` sirve una pantalla en `/app` (sin servicios ni costo adicional):
+
+- **Cliente**: registro **simulado** (nombre, correo y código postal; sin contraseña), catálogo M1 por código postal
+  (`GET /v1/catalogo`), carrito, compra con reserva de 300 s y cuenta regresiva, pago simulado y "Mis pedidos" con
+  avisos de cancelación parcial y reembolso.
+- **Tienda**: picker (bandeja, iniciar preparación, surtir, reportar faltante), supervisor (validar faltantes, conteo
+  físico, autorizar ajustes) y auditor (historial de existencia con reconstrucción).
+
+La sesión de demostración (`POST /v1/demo/sesion`) emite un JWT por rol y **responde 404 cuando `AMBIENTE=produccion`**;
+el inicio de sesión real queda fuera del alcance actual (proveedor de identidad previsto en el SDD).

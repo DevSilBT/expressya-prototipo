@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ExpressYA · Demostración</title>
+<style>
+  :root { --azul:#1f3864; --azul2:#2e75b6; --naranja:#f28c28; --gris:#f4f6f9; --borde:#dfe3ea; --texto:#1d2433; --suave:#667085;
+          --ok:#1a7f37; --mal:#c62828; --aviso:#b26a00; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color:var(--texto); background:var(--gris); }
+  header { background:var(--azul); color:#fff; padding:12px 20px; display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+  header h1 { font-size:20px; margin:0; letter-spacing:.3px; } header h1 b { color:var(--naranja); }
+  nav { display:flex; gap:6px; margin-left:auto; }
+  nav button { background:transparent; color:#fff; border:1px solid rgba(255,255,255,.35); padding:7px 14px; border-radius:20px; cursor:pointer; font-size:14px; }
+  nav button.activo { background:#fff; color:var(--azul); }
+  main { max-width:1180px; margin:0 auto; padding:18px; }
+  .demo { background:#fff7e6; border:1px solid #ffd591; color:#7a4b00; padding:8px 12px; border-radius:8px; font-size:13px; margin-bottom:14px; }
+  .tarjeta { background:#fff; border:1px solid var(--borde); border-radius:12px; padding:16px; margin-bottom:16px; }
+  .tarjeta h2 { margin:0 0 10px; font-size:17px; color:var(--azul); }
+  .rejilla { display:grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap:12px; }
+  .producto { border:1px solid var(--borde); border-radius:10px; padding:12px; background:#fff; display:flex; flex-direction:column; gap:6px; }
+  .producto .nombre { font-weight:600; } .producto .precio { font-size:18px; color:var(--azul2); font-weight:700; }
+  .chip { display:inline-block; padding:2px 8px; border-radius:10px; font-size:12px; background:#eef2f7; color:var(--suave); }
+  .chip.ok { background:#e6f4ea; color:var(--ok); } .chip.mal { background:#fdecea; color:var(--mal); } .chip.aviso { background:#fff4e0; color:var(--aviso); }
+  button.btn { background:var(--azul2); color:#fff; border:0; padding:8px 14px; border-radius:8px; cursor:pointer; font-size:14px; }
+  button.btn:disabled { background:#b9c3d0; cursor:not-allowed; } button.btn.sec { background:#fff; color:var(--azul2); border:1px solid var(--azul2); }
+  button.btn.naranja { background:var(--naranja); } button.btn.rojo { background:var(--mal); }
+  input, select { padding:8px 10px; border:1px solid var(--borde); border-radius:8px; font-size:14px; }
+  label { font-size:13px; color:var(--suave); display:block; margin-bottom:4px; }
+  .fila { display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; }
+  .dos { display:grid; grid-template-columns: 2fr 1fr; gap:16px; } @media (max-width: 860px) { .dos { grid-template-columns: 1fr; } }
+  table { width:100%; border-collapse:collapse; font-size:13px; } th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--borde); vertical-align:top; }
+  th { background:#f0f3f8; color:var(--azul); font-weight:600; }
+  .contador { font-size:30px; font-weight:700; color:var(--azul); font-variant-numeric: tabular-nums; }
+  .contador.poco { color:var(--mal); }
+  .total { font-size:18px; font-weight:700; }
+  .muted { color:var(--suave); font-size:13px; }
+  #toast { position:fixed; right:16px; bottom:16px; max-width:420px; padding:12px 14px; border-radius:10px; color:#fff; font-size:14px; display:none; z-index:10; box-shadow:0 6px 20px rgba(0,0,0,.18); }
+  .estado { font-weight:700; } .oculto { display:none; }
+  .linea-evt { font-size:12px; color:var(--suave); }
+  code { font-size:12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Express<b>YA</b> · Demostración</h1>
+  <span class="muted" style="color:#c9d6ea">Equipo 02 · Dinamita</span>
+  <nav><button id="tab-cliente" class="activo" onclick="vista('cliente')">Cliente</button>
+       <button id="tab-tienda" onclick="vista('tienda')">Tienda</button></nav>
+</header>
+<main>
+  <div class="demo">Ambiente de prueba. El registro es <b>simulado</b> (no hay contraseña ni cuenta real) y la pasarela de pago es simulada. La reserva dura exactamente 5 minutos.</div>
+
+  <!-- ===================================================== CLIENTE -->
+  <section id="v-cliente">
+    <div id="registro" class="tarjeta" style="max-width:520px">
+      <h2>Crear cuenta</h2>
+      <p class="muted">Regístrate para ver los productos disponibles en tu zona.</p>
+      <div style="display:grid; gap:10px">
+        <div><label>Nombre</label><input id="r-nombre" style="width:100%" placeholder="Ana López"></div>
+        <div><label>Correo</label><input id="r-correo" style="width:100%" placeholder="ana@correo.com"></div>
+        <div><label>Código postal de entrega</label><select id="r-cp" style="width:100%"></select></div>
+        <button class="btn naranja" onclick="registrar()">Crear cuenta y entrar</button>
+      </div>
+    </div>
+
+    <div id="tienda-cliente" class="oculto">
+      <div class="fila" style="justify-content:space-between; margin-bottom:12px">
+        <div>Hola, <b id="c-nombre"></b> · entrega en <b id="c-cp"></b> <span class="muted" id="c-tiendas"></span></div>
+        <div class="fila"><button class="btn sec" onclick="cargarCatalogo()">Actualizar</button>
+          <button class="btn sec" onclick="salirCliente()">Salir</button></div>
+      </div>
+      <div class="dos">
+        <div class="tarjeta"><h2>Productos</h2><div id="catalogo" class="rejilla"></div></div>
+        <div>
+          <div class="tarjeta" id="carrito-tarjeta">
+            <h2>Carrito</h2>
+            <div id="carrito"></div>
+            <div class="fila" style="margin-top:10px">
+              <div><label>Envío</label><input value="35.00" disabled style="width:90px"></div>
+              <div><label>Propina</label><select id="propina"><option>0</option><option selected>10</option><option>20</option></select></div>
+            </div>
+            <p class="total">Total: $<span id="total">0.00</span></p>
+            <button class="btn naranja" id="btn-comprar" onclick="comprar()" disabled>Comprar (reserva 5 min)</button>
+          </div>
+          <div class="tarjeta oculto" id="reserva">
+            <h2>Tu reserva</h2>
+            <p class="muted">Las unidades están apartadas para ti. Paga antes de que termine el tiempo.</p>
+            <div class="contador" id="contador">05:00</div>
+            <p>Pedido <code id="r-pedido"></code> · Tienda <b id="r-tienda"></b> · Total $<b id="r-total"></b></p>
+            <div class="fila"><button class="btn naranja" id="btn-pagar" onclick="pagar()">Pagar</button>
+              <button class="btn sec" onclick="abandonar()">Abandonar</button></div>
+          </div>
+        </div>
+      </div>
+      <div class="tarjeta"><h2>Mis pedidos</h2>
+        <div class="fila" style="margin-bottom:8px"><button class="btn sec" onclick="misPedidos()">Actualizar</button></div>
+        <div id="mis-pedidos"></div>
+        <div id="detalle-pedido"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================== TIENDA -->
+  <section id="v-tienda" class="oculto">
+    <div class="tarjeta">
+      <h2>Personal de la Dark Store</h2>
+      <div class="fila">
+        <div><label>Tienda</label><select id="t-tienda"></select></div>
+        <div><label>Rol</label><select id="t-rol"><option value="PICKER">Picker</option><option value="SUPERVISOR">Supervisor</option>
+          <option value="ENCARGADO">Encargado</option><option value="AUDITOR">Auditor</option></select></div>
+        <div><label>Nombre</label><input id="t-nombre" placeholder="Luis (picker)"></div>
+        <button class="btn" onclick="entrarTienda()">Entrar</button>
+        <span class="muted" id="t-sesion"></span>
+      </div>
+      <p class="muted">Cada rol es una persona distinta: quien reporta un faltante no puede validarlo, y quien cuenta no puede autorizar su ajuste.</p>
+    </div>
+
+    <div id="t-picker" class="oculto">
+      <div class="tarjeta"><h2>Pedidos por preparar</h2><button class="btn sec" onclick="bandejaPicker()">Actualizar</button>
+        <div id="bandeja" style="margin-top:10px"></div></div>
+      <div class="tarjeta oculto" id="t-pedido"></div>
+    </div>
+
+    <div id="t-supervisor" class="oculto">
+      <div class="tarjeta"><h2>Faltantes por validar</h2><button class="btn sec" onclick="bandejaSupervisor()">Actualizar</button>
+        <div id="faltantes" style="margin-top:10px"></div></div>
+      <div class="tarjeta"><h2>Conteo físico</h2>
+        <div class="fila"><div><label>Producto</label><select id="cnt-sku"></select></div>
+          <div><label>Unidades contadas</label><input id="cnt-cantidad" type="number" min="0" style="width:110px"></div>
+          <button class="btn" onclick="contar()">Registrar conteo</button></div>
+        <p class="muted">Si no coincide con el sistema, el producto se bloquea para la venta y se crea un ajuste que debe autorizar otra persona.</p></div>
+      <div class="tarjeta"><h2>Ajustes por autorizar</h2><div id="ajustes"></div></div>
+    </div>
+
+    <div id="t-auditor" class="oculto">
+      <div class="tarjeta"><h2>Historial de existencia</h2>
+        <div class="fila"><div><label>Producto</label><select id="h-sku"></select></div><button class="btn" onclick="historial()">Consultar</button></div>
+        <div id="historial" style="margin-top:10px"></div></div>
+    </div>
+  </section>
+</main>
+<div id="toast"></div>
+
+<script>
+// ---------------------------------------------------------------- utilidades
+const memoria = {};
+const guardar = (k, v) => { memoria[k] = v; try { localStorage.setItem('ey_' + k, JSON.stringify(v)); } catch (e) {} };
+const leer = (k) => { try { const v = localStorage.getItem('ey_' + k); if (v) return JSON.parse(v); } catch (e) {} return memoria[k]; };
+const borrar = (k) => { delete memoria[k]; try { localStorage.removeItem('ey_' + k); } catch (e) {} };
+const $ = (id) => document.getElementById(id);
+const dinero = (x) => Number(x || 0).toFixed(2);
+const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : 'k-' + Date.now() + '-' + Math.random().toString(16).slice(2));
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const ESTADOS = { RESERVADO: 'aviso', PAGADO: 'ok', EN_PREPARACION: 'aviso', COMPLETO: 'ok', PARCIAL: 'aviso', NO_PAGADO: 'mal',
+  CANCELADO_TOTAL: 'mal', PAGO_INCIERTO: 'aviso', PAGO_SIN_EXISTENCIA: 'mal', ESPERANDO_DECISION: 'mal', NORMAL: 'ok',
+  EN_VERIFICACION: 'mal', SOBRECOMPROMETIDA: 'mal', SURTIDA: 'ok', SURTIDA_PARCIAL: 'aviso', CANCELADA: 'mal', FALTANTE_REPORTADO: 'mal' };
+const chip = (e) => `<span class="chip ${ESTADOS[e] || ''}">${esc(e)}</span>`;
+const NOMBRES = { CANCELACION_PARCIAL: 'Se canceló parte de tu pedido', REEMBOLSO_CONFIRMADO: 'Reembolso confirmado',
+  PEDIDO_CONFIRMADO: 'Pedido confirmado', CANCELACION_TOTAL: 'Tu pedido se canceló', ALERTA_OPERATIVA: 'Alerta operativa' };
+
+function aviso(texto, tipo = 'ok') {
+  const t = $('toast'); t.textContent = texto; t.style.background = tipo === 'mal' ? '#c62828' : tipo === 'aviso' ? '#b26a00' : '#1a7f37';
+  t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(() => (t.style.display = 'none'), 5000);
+}
+
+async function api(metodo, ruta, { token, cuerpo, clave } = {}) {
+  const h = { 'Content-Type': 'application/json' };
+  if (token) h.Authorization = token;
+  if (clave) h['Idempotency-Key'] = clave;
+  const r = await fetch(ruta, { method: metodo, headers: h, body: cuerpo ? JSON.stringify(cuerpo) : undefined });
+  let datos = {}; try { datos = await r.json(); } catch (e) {}
+  if (!r.ok) { const e = new Error(datos.detail || datos.code || ('HTTP ' + r.status)); e.status = r.status; e.datos = datos; throw e; }
+  return datos;
+}
+const sesion = async (rol, nombre, extra = {}) => api('POST', '/v1/demo/sesion', { cuerpo: { rol, nombre, ...extra } });
+
+function vista(v) {
+  ['cliente', 'tienda'].forEach((x) => { $('v-' + x).classList.toggle('oculto', x !== v); $('tab-' + x).classList.toggle('activo', x === v); });
+}
+
+// ---------------------------------------------------------------- arranque
+let TIENDAS = [], PRODUCTOS = [];
+async function iniciar() {
+  try {
+    TIENDAS = (await api('GET', '/v1/tiendas')).tiendas;
+    const cps = [...new Set(TIENDAS.flatMap((t) => t.codigos_postales))].sort();
+    $('r-cp').innerHTML = cps.map((cp) => `<option>${cp}</option>`).join('');
+    $('t-tienda').innerHTML = TIENDAS.map((t) => `<option value="${t.tienda_id}">${t.tienda_id} · ${esc(t.nombre)}</option>`).join('');
+  } catch (e) { aviso('No se pudo cargar la lista de tiendas: ' + e.message, 'mal'); }
+  const c = leer('cliente');
+  if (c) mostrarTiendaCliente(c);
+}
+
+// ---------------------------------------------------------------- cliente
+async function registrar() {
+  const nombre = $('r-nombre').value.trim(), correo = $('r-correo').value.trim(), cp = $('r-cp').value;
+  if (nombre.length < 2) return aviso('Escribe tu nombre', 'aviso');
+  try {
+    const s = await sesion('CLIENTE', nombre, { correo: correo || null });
+    const c = { ...s, correo, cp }; guardar('cliente', c); mostrarTiendaCliente(c);
+    aviso('Cuenta creada. ¡Bienvenido, ' + nombre + '!');
+  } catch (e) { aviso(e.message, 'mal'); }
+}
+function salirCliente() { borrar('cliente'); borrar('carrito'); location.reload(); }
+function cliente() { return leer('cliente'); }
+
+function mostrarTiendaCliente(c) {
+  $('registro').classList.add('oculto'); $('tienda-cliente').classList.remove('oculto');
+  $('c-nombre').textContent = c.nombre; $('c-cp').textContent = c.cp;
+  cargarCatalogo(); misPedidos(); pintarCarrito();
+}
+
+async function cargarCatalogo() {
+  try {
+    const d = await api('GET', '/v1/catalogo?codigo_postal=' + cliente().cp);
+    PRODUCTOS = d.productos;
+    $('c-tiendas').textContent = '(te surte: ' + d.tiendas.map((t) => t.nombre + ' a ' + t.distancia_km + ' km').join(', ') + ')';
+    $('catalogo').innerHTML = PRODUCTOS.map((p) => `
+      <div class="producto">
+        <div class="nombre">${esc(p.descripcion)}</div><div class="muted">${esc(p.sku)}</div>
+        <div class="precio">$${dinero(p.precio)}</div>
+        <div>${p.bloqueado ? '<span class="chip mal">En verificación</span>' : p.disponible > 0
+          ? `<span class="chip ok">${p.disponible} disponibles</span>` : '<span class="chip mal">Agotado</span>'}</div>
+        <button class="btn" ${p.disponible > 0 ? '' : 'disabled'} onclick="agregar('${p.sku}')">Agregar</button>
+      </div>`).join('');
+    pintarCarrito();
+  } catch (e) { $('catalogo').innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
+}
+
+function carrito() { return leer('carrito') || {}; }
+function agregar(sku) {
+  const c = carrito(), p = PRODUCTOS.find((x) => x.sku === sku);
+  if ((c[sku] || 0) + 1 > p.disponible) return aviso('No hay más unidades disponibles de ' + p.descripcion, 'aviso');
+  c[sku] = (c[sku] || 0) + 1; guardar('carrito', c); borrar('clave_checkout'); pintarCarrito();
+}
+function quitar(sku) { const c = carrito(); if (--c[sku] <= 0) delete c[sku]; guardar('carrito', c); borrar('clave_checkout'); pintarCarrito(); }
+function pintarCarrito() {
+  const c = carrito(); const items = Object.entries(c);
+  let sub = 0;
+  $('carrito').innerHTML = items.length ? '<table>' + items.map(([sku, q]) => {
+    const p = PRODUCTOS.find((x) => x.sku === sku) || { descripcion: sku, precio: 0 }; sub += p.precio * q;
+    return `<tr><td>${esc(p.descripcion)}</td><td>× ${q}</td><td>$${dinero(p.precio * q)}</td>
+            <td><button class="btn sec" onclick="quitar('${sku}')">−</button></td></tr>`;
+  }).join('') + '</table>' : '<p class="muted">Tu carrito está vacío. Agregar al carrito no aparta productos: la reserva empieza al comprar.</p>';
+  $('total').textContent = dinero(items.length ? sub + 35 + Number($('propina').value) : 0);
+  $('btn-comprar').disabled = !items.length;
+}
+$('propina') && document.addEventListener('change', (e) => { if (e.target.id === 'propina') pintarCarrito(); });
+
+let RESERVA = null, RELOJ = null;
+async function comprar() {
+  const lineas = Object.entries(carrito()).map(([sku, cantidad]) => ({ sku, cantidad }));
+  let clave = leer('clave_checkout'); if (!clave) { clave = 'K1-' + uuid(); guardar('clave_checkout', clave); }
+  $('btn-comprar').disabled = true;
+  try {
+    const p = await api('POST', '/v1/pedidos', { token: cliente().token, clave,
+      cuerpo: { codigo_postal: cliente().cp, lineas, envio: 35, propina: Number($('propina').value) } });
+    RESERVA = { pedido_id: p.pedido_id, expira: new Date(p.reserva.expira_en), total: p.total, tienda: p.tienda_id };
+    guardar('carrito', {}); borrar('clave_checkout'); pintarCarrito(); mostrarReserva();
+    aviso('Reserva creada: tienes 5 minutos para pagar');
+  } catch (e) {
+    borrar('clave_checkout');
+    if (e.status === 409) aviso('No se reservó nada: ' + (e.datos.code === 'SKU_BLOQUEADO' ? 'un producto está en verificación'
+      : 'un producto se agotó') + '. Revisa el carrito.', 'aviso');
+    else aviso(e.message, 'mal');
+    cargarCatalogo();
+  } finally { pintarCarrito(); misPedidos(); }
+}
+function mostrarReserva() {
+  $('reserva').classList.remove('oculto'); $('btn-pagar').disabled = false;
+  $('r-pedido').textContent = RESERVA.pedido_id.slice(0, 8); $('r-tienda').textContent = RESERVA.tienda; $('r-total').textContent = dinero(RESERVA.total);
+  clearInterval(RELOJ);
+  const tic = () => {
+    const s = Math.max(0, Math.floor((RESERVA.expira - Date.now()) / 1000));
+    $('contador').textContent = String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+    $('contador').classList.toggle('poco', s < 60);
+    if (s === 0) { clearInterval(RELOJ); $('btn-pagar').disabled = true; aviso('La reserva venció: las unidades se liberaron', 'aviso'); cargarCatalogo(); }
+  };
+  tic(); RELOJ = setInterval(tic, 250);
+}
+function abandonar() { clearInterval(RELOJ); $('reserva').classList.add('oculto'); RESERVA = null; aviso('La reserva vencerá sola a los 5 minutos', 'aviso'); }
+async function pagar() {
+  $('btn-pagar').disabled = true; $('btn-pagar').textContent = 'Procesando…';
+  try {
+    const r = await api('POST', `/v1/pedidos/${RESERVA.pedido_id}/pago`, { token: cliente().token, clave: 'K2-' + uuid() });
+    clearInterval(RELOJ); $('reserva').classList.add('oculto');
+    if (r.estado === 'PAGADO') aviso('¡Pago aprobado! Tu pedido está confirmado');
+    else if (r.estado === 'PAGO_INCIERTO') aviso('El pago está en revisión: no se te cobrará dos veces', 'aviso');
+    else aviso('Resultado del pago: ' + r.estado, 'mal');
+  } catch (e) { aviso(e.datos?.code === 'RESERVA_VENCIDA' ? 'La reserva venció antes de pagar; no se hizo ningún cobro' : e.message, 'mal'); }
+  finally { $('btn-pagar').textContent = 'Pagar'; misPedidos(); cargarCatalogo(); }
+}
+
+async function misPedidos() {
+  try {
+    const d = await api('GET', '/v1/clientes/me/pedidos', { token: cliente().token });
+    $('mis-pedidos').innerHTML = d.pedidos.length ? '<table><tr><th>Pedido</th><th>Fecha</th><th>Tienda</th><th>Total</th><th>Estado</th><th></th></tr>' +
+      d.pedidos.map((p) => `<tr><td><code>${p.pedido_id.slice(0, 8)}</code></td><td>${new Date(p.creado_en).toLocaleString()}</td>
+        <td>${p.tienda_id}</td><td>$${dinero(p.total)}</td><td>${chip(p.estado)}</td>
+        <td><button class="btn sec" onclick="verPedido('${p.pedido_id}')">Ver</button></td></tr>`).join('') + '</table>'
+      : '<p class="muted">Aún no tienes pedidos.</p>';
+  } catch (e) { $('mis-pedidos').innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
+}
+async function verPedido(id) {
+  try {
+    const h = await api('GET', `/v1/pedidos/${id}/historial`, { token: cliente().token });
+    const nombre = (sku) => (PRODUCTOS.find((p) => p.sku === sku) || {}).descripcion || sku;
+    const avisos = [...new Map(h.notificaciones.map((n) => [n.tipo + JSON.stringify(n.datos), n])).values()];
+    $('detalle-pedido').innerHTML = `<hr><h3 style="margin:8px 0">Pedido <code>${id.slice(0, 8)}</code> ${chip(h.estado)}</h3>
+      <table><tr><th>Producto</th><th>Pedidas</th><th>Surtidas</th><th>Canceladas</th><th>Estado</th></tr>
+      ${h.lineas.map((l) => `<tr><td>${esc(nombre(l.sku))}</td><td>${l.cantidad_pedida}</td><td>${l.cantidad_surtida}</td><td>${l.cantidad_cancelada}</td><td>${chip(l.estado)}</td></tr>`).join('')}</table>
+      <p>Total cobrado $${dinero(h.total)} · Mercancía $${dinero(h.subtotal_mercancia)} · Envío $${dinero(h.envio)} · Propina $${dinero(h.propina)}</p>
+      <b>Avisos</b>${avisos.length ? '<ul>' + avisos.map((n) => `<li>${esc(NOMBRES[n.tipo] || n.tipo)}${n.datos.reembolso || n.datos.monto
+        ? ' · $' + dinero(n.datos.reembolso || n.datos.monto) : ''} <span class="linea-evt">${new Date(n.creada_en).toLocaleTimeString()}</span></li>`).join('') + '</ul>'
+        : '<p class="muted">Sin avisos todavía.</p>'}
+      <details><summary class="muted">Bitácora del pedido (${h.eventos.length} eventos)</summary><ul>
+        ${h.eventos.map((e) => `<li class="linea-evt">${new Date(e.hora_servidor).toLocaleTimeString()} · ${esc(e.tipo)}</li>`).join('')}</ul></details>`;
+  } catch (e) { aviso(e.message, 'mal'); }
+}
+
+// ---------------------------------------------------------------- tienda
+let STAFF = null;
+async function entrarTienda() {
+  const rol = $('t-rol').value, tienda = Number($('t-tienda').value);
+  const nombre = $('t-nombre').value.trim() || rol.toLowerCase();
+  const previos = leer('staff') || {};
+  const clave = rol + ':' + nombre;                                     // misma persona → misma identidad simulada
+  try {
+    const s = await sesion(rol, nombre, { tienda_id: tienda, usuario_id: previos[clave] || null });
+    previos[clave] = s.usuario_id; guardar('staff', previos);
+    STAFF = { ...s, tienda };
+    $('t-sesion').textContent = `Sesión: ${nombre} (${rol}) · tienda ${tienda}`;
+    $('t-picker').classList.toggle('oculto', rol !== 'PICKER');
+    $('t-supervisor').classList.toggle('oculto', !['SUPERVISOR', 'ENCARGADO'].includes(rol));
+    $('t-auditor').classList.toggle('oculto', !['AUDITOR', 'SUPERVISOR', 'ENCARGADO'].includes(rol));
+    const prods = (await api('GET', '/v1/catalogo?codigo_postal=' + (TIENDAS.find((t) => t.tienda_id === tienda).codigos_postales[0] || '00000'))).productos;
+    const opts = prods.map((p) => `<option value="${p.sku}">${esc(p.descripcion)} (${p.sku})</option>`).join('');
+    $('cnt-sku').innerHTML = opts; $('h-sku').innerHTML = opts;
+    if (rol === 'PICKER') bandejaPicker(); else if (rol !== 'AUDITOR') bandejaSupervisor();
+  } catch (e) { aviso(e.message, 'mal'); }
+}
+const T = () => `/v1/tiendas/${STAFF.tienda}`;
+
+async function bandejaPicker() {
+  try {
+    const d = await api('GET', T() + '/pedidos', { token: STAFF.token });
+    $('bandeja').innerHTML = d.pedidos.length ? '<table><tr><th>Pedido</th><th>Pagado</th><th>Líneas</th><th>Pendientes</th><th>Estado</th><th></th></tr>' +
+      d.pedidos.map((p) => `<tr><td><code>${p.pedido_id.slice(0, 8)}</code></td><td>${p.hora_confirmacion ? new Date(p.hora_confirmacion).toLocaleTimeString() : '—'}</td>
+        <td>${p.lineas}</td><td>${p.unidades_pendientes}</td><td>${chip(p.estado)}</td>
+        <td><button class="btn sec" onclick="abrirPedido('${p.pedido_id}')">Abrir</button></td></tr>`).join('') + '</table>'
+      : '<p class="muted">No hay pedidos por preparar en esta tienda.</p>';
+  } catch (e) { aviso(e.message, 'mal'); }
+}
+async function abrirPedido(id) {
+  try {
+    const p = await api('GET', `${T()}/pedidos/${id}`, { token: STAFF.token });
+    const porValidar = Object.fromEntries(p.faltantes_por_validar.map((f) => [f.sku, f.faltantes]));
+    const caja = $('t-pedido'); caja.classList.remove('oculto');
+    caja.innerHTML = `<h2>Pedido <code>${id.slice(0, 8)}</code> ${chip(p.estado)}</h2>
+      ${p.estado === 'PAGADO' ? `<button class="btn naranja" onclick="iniciarPrep('${id}')">Iniciar preparación</button>` : ''}
+      <table style="margin-top:10px"><tr><th>Producto</th><th>Pedidas</th><th>Surtidas</th><th>Canceladas</th><th>Por validar</th><th>Estado</th><th>Acciones</th></tr>
+      ${p.lineas.map((l) => { const pend = l.cantidad_pedida - l.cantidad_surtida - l.cantidad_cancelada - (porValidar[l.sku] || 0);
+        return `<tr><td>${esc(l.sku)}</td><td>${l.cantidad_pedida}</td><td>${l.cantidad_surtida}</td><td>${l.cantidad_cancelada}</td><td>${porValidar[l.sku] || 0}</td><td>${chip(l.estado)}</td>
+        <td>${p.estado === 'EN_PREPARACION' && pend > 0 ? `
+          <div class="fila"><input type="number" id="q-${l.linea_id}" value="${pend}" min="1" max="${pend}" style="width:60px">
+            <button class="btn" onclick="surtir('${id}','${l.linea_id}')">Surtir</button></div>
+          <div class="fila" style="margin-top:6px"><input type="number" id="f-${l.linea_id}" value="1" min="1" max="${pend}" style="width:60px">
+            <select id="m-${l.linea_id}"><option>NO_ENCONTRADO</option><option>DANADO_EN_ANAQUEL</option><option>CADUCADO</option><option>UBICACION_INCORRECTA</option></select>
+            <button class="btn rojo" onclick="faltante('${id}','${l.linea_id}', ${pend})">Reportar faltante</button></div>` : ''}</td></tr>`; }).join('')}
+      </table>`;
+  } catch (e) { aviso(e.message, 'mal'); }
+}
+async function iniciarPrep(id) {
+  try { await api('POST', `/v1/pedidos/${id}/preparacion`, { token: STAFF.token }); aviso('Preparación iniciada'); abrirPedido(id); bandejaPicker(); }
+  catch (e) { aviso(e.message, 'mal'); }
+}
+async function surtir(id, linea) {
+  try {
+    const r = await api('POST', `/v1/lineas/${linea}/surtido`, { token: STAFF.token, clave: 'S-' + uuid(), cuerpo: { cantidad: Number($('q-' + linea).value) } });
+    aviso('Surtido · pedido ' + r.estado_pedido); abrirPedido(id); bandejaPicker();
+  } catch (e) { aviso(e.message, 'mal'); }
+}
+async function faltante(id, linea, pend) {
+  const falt = Number($('f-' + linea).value);
+  try {
+    await api('POST', `/v1/lineas/${linea}/faltantes`, { token: STAFF.token, clave: 'K3-' + uuid(),
+      cuerpo: { encontradas: Math.max(0, pend - falt), faltantes: falt, motivo: $('m-' + linea).value } });
+    aviso('Faltante reportado: el producto quedó en verificación hasta que el supervisor lo valide', 'aviso'); abrirPedido(id);
+  } catch (e) { aviso(e.message, 'mal'); }
+}
+
+async function bandejaSupervisor() {
+  try {
+    const f = await api('GET', T() + '/faltantes', { token: STAFF.token });
+    $('faltantes').innerHTML = f.faltantes.length ? '<table><tr><th>Pedido</th><th>Producto</th><th>Faltan</th><th>Motivo</th><th>Evidencia</th><th></th></tr>' +
+      f.faltantes.map((x) => `<tr><td><code>${x.pedido_id.slice(0, 8)}</code></td><td>${esc(x.sku)}</td><td>${x.faltantes}</td><td>${esc(x.motivo)}</td>
+        <td><input id="ev-${x.faltante_id}" placeholder="Revisé anaquel y bodega" style="width:100%"></td>
+        <td class="fila"><button class="btn" onclick="validar('${x.faltante_id}', true)">Validar</button>
+            <button class="btn sec" onclick="validar('${x.faltante_id}', false)">No validar</button></td></tr>`).join('') + '</table>'
+      : '<p class="muted">No hay faltantes por validar.</p>';
+    const a = await api('GET', T() + '/ajustes-inventario', { token: STAFF.token });
+    $('ajustes').innerHTML = a.ajustes.length ? '<table><tr><th>Producto</th><th>Sistema</th><th>Físico</th><th>Ajuste</th><th>Evidencia</th><th></th></tr>' +
+      a.ajustes.map((x) => `<tr><td>${esc(x.sku)}</td><td>${x.cantidad_logica ?? '—'}</td><td>${x.cantidad_fisica ?? '—'}</td><td>${esc(x.tipo)} ${x.cantidad}</td>
+        <td><input id="ea-${x.ajuste_id}" placeholder="Reconteo con foto" style="width:100%"></td>
+        <td class="fila"><button class="btn" onclick="autorizar('${x.ajuste_id}', true)">Autorizar</button>
+            <button class="btn sec" onclick="autorizar('${x.ajuste_id}', false)">Rechazar</button></td></tr>`).join('') + '</table>'
+      : '<p class="muted">No hay ajustes por autorizar.</p>';
+  } catch (e) { aviso(e.message, 'mal'); }
+}
+async function validar(id, valido) {
+  const ev = $('ev-' + id).value.trim() || (valido ? 'Revisé anaquel y bodega' : 'El producto sí está en la tienda');
+  try {
+    const r = await api('POST', `/v1/faltantes/${id}/validacion`, { token: STAFF.token, clave: 'V-' + uuid(), cuerpo: { valido, evidencia: ev } });
+    aviso(valido ? `Faltante validado · reembolso de $${r.reembolso_solicitado} · pedido ${r.estado_pedido}` : 'Faltante no validado: el picker debe volver a surtir');
+    bandejaSupervisor();
+  } catch (e) { aviso(e.status === 403 ? 'No puedes validar un faltante que tú reportaste' : e.message, 'mal'); }
+}
+async function contar() {
+  const sku = $('cnt-sku').value, cantidad = Number($('cnt-cantidad').value);
+  if ($('cnt-cantidad').value === '') return aviso('Escribe las unidades contadas', 'aviso');
+  try {
+    const r = await api('POST', `${T()}/existencias/${sku}/conteos`, { token: STAFF.token, clave: 'C-' + uuid(), cuerpo: { cantidad_fisica: cantidad } });
+    aviso(r.resultado === 'SIN_DIFERENCIA' ? 'Conteo correcto: coincide con el sistema' : `Diferencia de ${r.diferencia}: producto bloqueado y ajuste por autorizar`,
+      r.resultado === 'SIN_DIFERENCIA' ? 'ok' : 'aviso');
+    bandejaSupervisor();
+  } catch (e) { aviso(e.message, 'mal'); }
+}
+async function autorizar(id, aprobar) {
+  const ev = $('ea-' + id).value.trim() || 'Reconteo verificado';
+  try {
+    const r = await api('POST', `/v1/ajustes-inventario/${id}/autorizacion`, { token: STAFF.token, clave: 'A-' + uuid(), cuerpo: { aprobar, evidencia: ev } });
+    aviso(aprobar ? `Ajuste aplicado · existencia ${r.vendible} · ${r.estado_existencia}` : 'Ajuste rechazado: se programó un reconteo'); bandejaSupervisor();
+  } catch (e) { aviso(e.status === 403 ? 'Quien hizo el conteo no puede autorizar su propio ajuste' : e.message, 'mal'); }
+}
+async function historial() {
+  try {
+    const h = await api('GET', `${T()}/existencias/${$('h-sku').value}/historial`, { token: STAFF.token });
+    const ex = h.existencia;
+    $('historial').innerHTML = `<p>Sistema: vendible <b>${ex.vendible}</b> · reservado <b>${ex.reservado}</b> · comprometido <b>${ex.comprometido}</b> ·
+      disponible <b>${ex.disponible}</b> ${chip(ex.estado)}</p>
+      <p class="muted">Reconstrucción desde movimientos: ${h.reconstruccion.map((r) => `${r.saldo} ${r.desde_movimientos}/${r.registrado} ${r.coincide ? '✓' : '✗'}`).join(' · ')}</p>
+      <table><tr><th>#</th><th>Hora</th><th>Tipo</th><th>Saldo</th><th>Cambio</th><th>Antes → después</th><th>Quién</th><th>Motivo</th><th>Pedido</th></tr>
+      ${h.movimientos.map((m) => `<tr><td>${m.movimiento_id}</td><td>${new Date(m.registrado_en).toLocaleString()}</td><td>${esc(m.tipo)}</td><td>${esc(m.saldo)}</td>
+        <td>${m.delta > 0 ? '+' : ''}${m.delta}</td><td>${m.saldo_antes} → ${m.saldo_despues}</td><td><code>${esc(String(m.actor).slice(0, 14))}</code></td>
+        <td>${esc(m.motivo || '')}</td><td>${m.pedido_id ? '<code>' + String(m.pedido_id).slice(0, 8) + '</code>' : ''}</td></tr>`).join('')}</table>`;
+  } catch (e) { aviso(e.message, 'mal'); }
+}
+
+iniciar();
+</script>
+</body>
+</html>

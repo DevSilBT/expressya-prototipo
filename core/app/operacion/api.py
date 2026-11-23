@@ -92,3 +92,60 @@ def historial_pedido(pedido_id: str, usuario: Usuario = Depends(requiere_rol("CL
     with transaccion() as conn:
         _verificar_dueno(conn, pedido_id, usuario)
         return {**pedidos.consultar(conn, pedido_id), **servicio.historial_pedido(conn, pedido_id)}
+
+
+# ---------------------------------------------------------------- consultas para la interfaz (bandejas de trabajo)
+@router.get("/tiendas/{tienda_id}/pedidos", summary="Bandeja del picker: pedidos pagados o en preparación de la tienda")
+def pedidos_de_tienda(tienda_id: int, estado: list[str] = Query(["PAGADO", "EN_PREPARACION"]),
+                      usuario: Usuario = Depends(requiere_rol(*OPERACION, "AUDITOR"))):
+    with transaccion() as conn:
+        return {"pedidos": conn.execute(
+            """SELECT p.pedido_id, p.estado, p.hora_confirmacion, p.creado_en, p.total,
+                      count(l.*) AS lineas,
+                      sum(l.cantidad_pedida - l.cantidad_surtida - l.cantidad_cancelada) AS unidades_pendientes
+                 FROM pedidos.pedido p JOIN pedidos.linea_pedido l USING (pedido_id)
+                WHERE p.tienda_id = %s AND p.estado = ANY(%s)
+                GROUP BY p.pedido_id ORDER BY p.hora_confirmacion NULLS LAST, p.creado_en LIMIT 50""",
+            (tienda_id, estado)).fetchall()}
+
+
+@router.get("/tiendas/{tienda_id}/faltantes", summary="Bandeja del supervisor: faltantes por validar")
+def faltantes_de_tienda(tienda_id: int, usuario: Usuario = Depends(requiere_rol("SUPERVISOR", "ENCARGADO", "AUDITOR"))):
+    with transaccion() as conn:
+        return {"faltantes": conn.execute(
+            """SELECT f.faltante_id, f.estado, f.motivo, f.encontradas, f.faltantes, f.descripcion, f.picker_id, f.creado_en,
+                      l.sku, l.pedido_id
+                 FROM operacion.reporte_faltante f JOIN pedidos.linea_pedido l USING (linea_id)
+                 JOIN pedidos.pedido p USING (pedido_id)
+                WHERE p.tienda_id = %s AND f.estado = 'POR_VALIDAR' ORDER BY f.creado_en""", (tienda_id,)).fetchall()}
+
+
+@router.get("/tiendas/{tienda_id}/ajustes-inventario", summary="Bandeja del supervisor: ajustes por autorizar")
+def ajustes_de_tienda(tienda_id: int, usuario: Usuario = Depends(requiere_rol("SUPERVISOR", "ENCARGADO", "AUDITOR"))):
+    with transaccion() as conn:
+        return {"ajustes": conn.execute(
+            """SELECT a.ajuste_inv_id AS ajuste_id, a.sku, a.tipo, a.cantidad, a.motivo, a.solicitante_id, a.creado_en,
+                      d.cantidad_logica, d.cantidad_fisica
+                 FROM operacion.ajuste_inventario a LEFT JOIN inventario.discrepancia d USING (discrepancia_id)
+                WHERE a.tienda_id = %s AND a.estado = 'PENDIENTE_AUTORIZACION' ORDER BY a.creado_en""",
+            (tienda_id,)).fetchall()}
+
+
+@router.get("/clientes/me/pedidos", summary="Mis pedidos (cliente)")
+def mis_pedidos(usuario: Usuario = Depends(requiere_rol("CLIENTE"))):
+    with transaccion() as conn:
+        return {"pedidos": conn.execute(
+            """SELECT pedido_id, estado, tienda_id, total, creado_en, actualizado_en FROM pedidos.pedido
+                WHERE cliente_id = %s ORDER BY creado_en DESC LIMIT 30""", (servicio._uuid(usuario.usuario_id),)).fetchall()}
+
+
+@router.get("/tiendas/{tienda_id}/pedidos/{pedido_id}", summary="Detalle del pedido para el personal de la tienda")
+def pedido_de_tienda(tienda_id: int, pedido_id: str, usuario: Usuario = Depends(requiere_rol(*OPERACION, "AUDITOR"))):
+    with transaccion() as conn:
+        p = pedidos.consultar(conn, servicio._uuid(pedido_id, "pedido_id"))
+        if p["tienda_id"] != tienda_id:
+            raise servicio.ErrorNegocio("NO_ENCONTRADO", "El pedido no pertenece a esta tienda")
+        p["faltantes_por_validar"] = conn.execute(
+            """SELECT f.faltante_id, l.sku, f.faltantes FROM operacion.reporte_faltante f JOIN pedidos.linea_pedido l USING (linea_id)
+                WHERE l.pedido_id = %s AND f.estado = 'POR_VALIDAR'""", (pedido_id,)).fetchall()
+        return p
