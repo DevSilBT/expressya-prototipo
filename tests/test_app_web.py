@@ -51,42 +51,42 @@ def test_catalogo_m1_por_codigo_postal():
 def test_flujo_de_la_pantalla_cliente_y_tienda(pagos_falso):
     cli = sesion("CLIENTE", "Ana")
     r = cliente.post("/v1/pedidos", headers={**cli, **clave("K1")},
-                     json={"codigo_postal": "53300", "lineas": [{"sku": "SKU-A", "cantidad": 2}], "envio": 35, "propina": 10})
+                     json={"codigo_postal": "53400", "lineas": [{"sku": "SKU-A", "cantidad": 2}], "envio": 35, "propina": 10})
     assert r.status_code == 201, r.text
     pid = r.json()["pedido_id"]
-    assert r.json()["tienda_id"] == 4
+    assert r.json()["tienda_id"] == 5
     assert cliente.post(f"/v1/pedidos/{pid}/pago", headers={**cli, **clave("K2")}).json()["estado"] == "PAGADO"
 
     mios = cliente.get("/v1/clientes/me/pedidos", headers=cli).json()["pedidos"]
     assert [p["pedido_id"] for p in mios] == [pid] and mios[0]["estado"] == "PAGADO"
 
-    picker = sesion("PICKER", "Luis", tienda_id=4)
-    bandeja = cliente.get("/v1/tiendas/4/pedidos", headers=picker).json()["pedidos"]
+    picker = sesion("PICKER", "Luis", tienda_id=5)
+    bandeja = cliente.get("/v1/tiendas/5/pedidos", headers=picker).json()["pedidos"]
     assert pid in [str(p["pedido_id"]) for p in bandeja]
-    assert cliente.get("/v1/tiendas/4/pedidos", headers=cli).status_code == 403                # el cliente no ve la bandeja
-    assert cliente.get(f"/v1/tiendas/3/pedidos/{pid}", headers=picker).status_code == 404      # otra tienda
+    assert cliente.get("/v1/tiendas/5/pedidos", headers=cli).status_code == 403                # el cliente no ve la bandeja
+    assert cliente.get(f"/v1/tiendas/4/pedidos/{pid}", headers=picker).status_code == 404      # otra tienda
     assert cliente.post(f"/v1/pedidos/{pid}/preparacion", headers=picker).status_code == 200
-    det = cliente.get(f"/v1/tiendas/4/pedidos/{pid}", headers=picker).json()
+    det = cliente.get(f"/v1/tiendas/5/pedidos/{pid}", headers=picker).json()
     linea = det["lineas"][0]["linea_id"]
     r = cliente.post(f"/v1/lineas/{linea}/faltantes", headers={**picker, **clave("K3")},
                      json={"encontradas": 1, "faltantes": 1, "motivo": "NO_ENCONTRADO"})
     assert r.status_code == 201, r.text
-    assert cliente.get(f"/v1/tiendas/4/pedidos/{pid}", headers=picker).json()["faltantes_por_validar"][0]["faltantes"] == 1
+    assert cliente.get(f"/v1/tiendas/5/pedidos/{pid}", headers=picker).json()["faltantes_por_validar"][0]["faltantes"] == 1
 
-    sup = sesion("SUPERVISOR", "Marta", tienda_id=4)
-    falt = cliente.get("/v1/tiendas/4/faltantes", headers=sup).json()["faltantes"]
+    sup = sesion("SUPERVISOR", "Marta", tienda_id=5)
+    falt = cliente.get("/v1/tiendas/5/faltantes", headers=sup).json()["faltantes"]
     assert len(falt) == 1 and str(falt[0]["pedido_id"]) == pid
     v = cliente.post(f"/v1/faltantes/{falt[0]['faltante_id']}/validacion", headers={**sup, **clave("V")},
                      json={"valido": True, "evidencia": "Revisé anaquel y bodega"})
     assert v.status_code == 200, v.text
-    assert cliente.get("/v1/tiendas/4/faltantes", headers=sup).json()["faltantes"] == []
+    assert cliente.get("/v1/tiendas/5/faltantes", headers=sup).json()["faltantes"] == []
 
-    c = cliente.post("/v1/tiendas/4/existencias/SKU-B/conteos", headers={**sup, **clave("C")}, json={"cantidad_fisica": 9})
+    c = cliente.post("/v1/tiendas/5/existencias/SKU-B/conteos", headers={**sup, **clave("C")}, json={"cantidad_fisica": 9})
     assert c.status_code == 201 and c.json()["resultado"] == "DISCREPANCIA", c.text
-    ajustes_pend = cliente.get("/v1/tiendas/4/ajustes-inventario", headers=sup).json()["ajustes"]
+    ajustes_pend = cliente.get("/v1/tiendas/5/ajustes-inventario", headers=sup).json()["ajustes"]
     assert len(ajustes_pend) == 1 and ajustes_pend[0]["cantidad_logica"] == 10 and ajustes_pend[0]["cantidad_fisica"] == 9
-    otro = sesion("SUPERVISOR", "Raúl", tienda_id=4)
+    otro = sesion("SUPERVISOR", "Raúl", tienda_id=5)
     a = cliente.post(f"/v1/ajustes-inventario/{ajustes_pend[0]['ajuste_id']}/autorizacion", headers={**otro, **clave("A")},
                      json={"aprobar": True, "evidencia": "Reconteo verificado"})
     assert a.status_code == 200 and a.json()["vendible"] == 9, a.text
-    assert cliente.get("/v1/tiendas/4/ajustes-inventario", headers=sup).json()["ajustes"] == []
+    assert cliente.get("/v1/tiendas/5/ajustes-inventario", headers=sup).json()["ajustes"] == []
