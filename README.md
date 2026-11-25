@@ -157,3 +157,28 @@ bash infra/azure/auditar.sh --consumo   # además, proyección de la cuota gratu
 
 No crea, cambia ni borra recursos y no imprime valores de secretos. El informe queda en `infra/azure/auditoria_azure_<fecha>.txt`
 y termina con la lista de avisos.
+
+## Respuesta a la retroalimentación del 24-nov (caso «lógico 3, físico 2»)
+
+**El caso del profesor de punta a punta** (`tests/test_caso_zeta.py`, `infra/azure/probar_zeta.sh`):
+1. El encargado prepara el escenario: «Producto Zeta» con inventario lógico de 3 en la Dark Store 5 (CP 53400)
+   (`POST /v1/demo/escenario-zeta`, reposición auditada con movimiento; no existe en producción).
+2. El cliente pide 3 y paga. 3. El picker ve producto, pedidas, surtidas, por validar y **por surtir** (calculadas en el
+   servidor) y pulsa **«Encontré menos…» → 2**: `POST /v1/lineas/{id}/surtido-verificado` (API-OPS-07) surte 2 y reporta
+   1 faltante **en una sola transacción** (migración 008); la venta de Zeta queda bloqueada (ADR-27).
+4. El supervisor —otra persona (INV-19)— valida: se cancela 1 unidad, se solicita el reembolso de $20.00 (ADR-28),
+   el pedido queda **PARCIAL** y el inventario queda lógico 0 = físico 0, con conteo dirigido programado.
+5. La bitácora registra pago, surtido, faltante, cancelación y reembolso; la **vista del personal**
+   (`/v1/pedidos/{id}/bitacora?vista=personal`) muestra **quién y cuándo** (nombre y rol de la sesión simulada, correlación).
+
+**Rendimiento y volumen** (`infra/carga/carga.py`, solo biblioteca estándar):
+- Cada respuesta trae `Server-Timing: app;dur=…`. `carga.py latencia` separa tiempo **en el servidor** de **red + TLS +
+  arranque en frío**; córrelo desde Cloud Shell y desde la red de la escuela para comparar.
+- `carga.py lectura` (consultas concurrentes) y `carga.py checkout` (reservas concurrentes sin pagar; comprueba que no haya
+  sobreventa). El CI lo ejecuta en cada cambio contra el core real con PostgreSQL 16 y guarda `evidencia/carga.txt`.
+
+```bash
+python3 infra/carga/carga.py --url https://<core> latencia
+python3 infra/carga/carga.py --url https://<core> todo -n 200 -c 15    # límites: 2 000 solicitudes, 30 concurrentes
+bash infra/azure/probar_zeta.sh                                         # caso Zeta en Azure con evidencia
+```

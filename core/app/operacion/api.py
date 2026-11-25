@@ -25,6 +25,12 @@ class Faltante(BaseModel):
     descripcion: str | None = Field(default=None, max_length=500)
 
 
+class SurtidoVerificado(BaseModel):
+    encontradas: int = Field(ge=0, le=99)
+    motivo: Literal["NO_ENCONTRADO", "DANADO_EN_ANAQUEL", "CADUCADO", "UBICACION_INCORRECTA", "OTRO"] | None = None
+    descripcion: str | None = Field(default=None, max_length=500)
+
+
 class Validacion(BaseModel):
     valido: bool
     evidencia: str = Field(min_length=3, max_length=1000)
@@ -48,6 +54,14 @@ def iniciar_preparacion(pedido_id: str, request: Request, usuario: Usuario = Dep
 def surtir(linea_id: str, cuerpo: Surtido, request: Request, idempotency_key: str = Header(...),
            usuario: Usuario = Depends(requiere_rol("PICKER"))):
     return servicio.surtir(linea_id, cuerpo.cantidad, usuario.usuario_id, _clave(idempotency_key), request.state.correlacion_id)
+
+
+@router.post("/lineas/{linea_id}/surtido-verificado",
+             summary="API-OPS-07 RegistrarSurtido (encontré N de las pendientes: surte N y reporta la diferencia como faltante)")
+def surtido_verificado(linea_id: str, cuerpo: SurtidoVerificado, request: Request, idempotency_key: str = Header(...),
+                       usuario: Usuario = Depends(requiere_rol("PICKER"))):
+    return servicio.registrar_surtido(linea_id, cuerpo.encontradas, cuerpo.motivo, cuerpo.descripcion, usuario.usuario_id,
+                                      _clave(idempotency_key), request.state.correlacion_id)
 
 
 @router.post("/lineas/{linea_id}/faltantes", status_code=201, summary="API-OPS-03 ReportarFaltante (bloquea la venta del SKU)")
@@ -101,8 +115,10 @@ def pedidos_de_tienda(tienda_id: int, estado: list[str] = Query(["PAGADO", "EN_P
     with transaccion() as conn:
         return {"pedidos": conn.execute(
             """SELECT p.pedido_id, p.estado, p.hora_confirmacion, p.creado_en, p.total,
-                      count(l.*) AS lineas,
-                      sum(l.cantidad_pedida - l.cantidad_surtida - l.cantidad_cancelada) AS unidades_pendientes
+                      count(l.*) AS lineas, sum(l.cantidad_pedida) AS unidades_pedidas,
+                      sum(l.cantidad_pedida - l.cantidad_surtida - l.cantidad_cancelada) AS unidades_pendientes,
+                      COALESCE(sum((SELECT sum(f.faltantes) FROM operacion.reporte_faltante f
+                                     WHERE f.linea_id = l.linea_id AND f.estado = 'POR_VALIDAR')), 0) AS unidades_por_validar
                  FROM pedidos.pedido p JOIN pedidos.linea_pedido l USING (pedido_id)
                 WHERE p.tienda_id = %s AND p.estado = ANY(%s)
                 GROUP BY p.pedido_id ORDER BY p.hora_confirmacion NULLS LAST, p.creado_en LIMIT 50""",
@@ -113,10 +129,10 @@ def pedidos_de_tienda(tienda_id: int, estado: list[str] = Query(["PAGADO", "EN_P
 def faltantes_de_tienda(tienda_id: int, usuario: Usuario = Depends(requiere_rol("SUPERVISOR", "ENCARGADO", "AUDITOR"))):
     with transaccion() as conn:
         return {"faltantes": conn.execute(
-            """SELECT f.faltante_id, f.estado, f.motivo, f.encontradas, f.faltantes, f.descripcion, f.picker_id, f.creado_en,
-                      l.sku, l.pedido_id
+            """SELECT f.faltante_id, f.estado, f.motivo, f.encontradas, f.faltantes, f.descripcion AS descripcion_faltante,
+                      f.picker_id, f.creado_en, l.sku, COALESCE(pr.descripcion, l.sku) AS descripcion, l.pedido_id
                  FROM operacion.reporte_faltante f JOIN pedidos.linea_pedido l USING (linea_id)
-                 JOIN pedidos.pedido p USING (pedido_id)
+                 JOIN pedidos.pedido p USING (pedido_id) LEFT JOIN catalogo.producto pr ON pr.sku = l.sku
                 WHERE p.tienda_id = %s AND f.estado = 'POR_VALIDAR' ORDER BY f.creado_en""", (tienda_id,)).fetchall()}
 
 
@@ -145,6 +161,7 @@ def pedido_de_tienda(tienda_id: int, pedido_id: str, usuario: Usuario = Depends(
         p = pedidos.consultar(conn, servicio._uuid(pedido_id, "pedido_id"))
         if p["tienda_id"] != tienda_id:
             raise servicio.ErrorNegocio("NO_ENCONTRADO", "El pedido no pertenece a esta tienda")
+        p.update(servicio.detalle_para_tienda(conn, p["pedido_id"]))
         p["faltantes_por_validar"] = conn.execute(
             """SELECT f.faltante_id, l.sku, f.faltantes FROM operacion.reporte_faltante f JOIN pedidos.linea_pedido l USING (linea_id)
                 WHERE l.pedido_id = %s AND f.estado = 'POR_VALIDAR'""", (pedido_id,)).fetchall()

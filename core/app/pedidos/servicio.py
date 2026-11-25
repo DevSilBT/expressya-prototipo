@@ -188,10 +188,11 @@ def procesar_resultado_pago(evento: dict, corr: str | None, actor: str = "M2", r
         return resultado
 
 
-def bitacora_cliente(conn: Connection, pedido_id: str) -> dict:
-    """API-PED-10 · Bitácora del cliente en tiempo real (lee la bandeja de salida; sin datos internos)."""
+def bitacora_cliente(conn: Connection, pedido_id: str, vista: str = "cliente") -> dict:
+    """API-PED-10 · Bitácora en tiempo real (lee la bandeja de salida). Vista cliente: sin datos internos.
+    Vista personal: además quién operó (nombre, rol e id) y la correlación."""
     pedido = conn.execute(
-        """SELECT pedido_id, tienda_id, estado, subtotal_mercancia, envio, propina, descuento_promocion, total
+        """SELECT pedido_id, cliente_id, tienda_id, estado, subtotal_mercancia, envio, propina, descuento_promocion, total
              FROM pedidos.pedido WHERE pedido_id = %s""", (pedido_id,)).fetchone()
     if not pedido:
         raise ErrorNegocio("NO_ENCONTRADO", "Pedido inexistente")
@@ -203,13 +204,18 @@ def bitacora_cliente(conn: Connection, pedido_id: str) -> dict:
         """SELECT estado, expira_en FROM inventario.reserva WHERE pedido_id = %s ORDER BY creada_en DESC LIMIT 1""",
         (pedido_id,)).fetchone()
     eventos = conn.execute(
-        """SELECT tipo, creado_en, datos FROM comun.outbox WHERE datos->>'pedido_id' = %s ORDER BY creado_en""",
+        """SELECT tipo, creado_en, datos, correlacion_id FROM comun.outbox WHERE datos->>'pedido_id' = %s ORDER BY creado_en""",
         (str(pedido_id),)).fetchall()
     avisos = conn.execute(
         """SELECT tipo, datos, creada_en FROM notificaciones.notificacion
             WHERE datos->>'pedido_id' = %s AND canal = 'APP' ORDER BY creada_en""", (str(pedido_id),)).fetchall()
     ahora = conn.execute("SELECT clock_timestamp() AS t").fetchone()["t"]
-    return bitacora.armar(pedido, lineas, reserva, eventos, avisos, ahora)
+    personas = {}
+    if vista == "personal":
+        from ..operacion.servicio import nombres
+        ids = [pedido["cliente_id"]] + [e["datos"].get(k) for e in eventos for k in ("picker_id", "supervisor_id") if e["datos"]]
+        personas = nombres(conn, ids)
+    return bitacora.armar(pedido, lineas, reserva, eventos, avisos, ahora, vista, personas)
 
 
 def procesar_resultado_ajuste(evento: dict, corr: str | None) -> dict:

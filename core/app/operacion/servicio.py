@@ -37,6 +37,52 @@ def surtir(linea_id: str, cantidad: int, picker: str, clave: str, corr: str) -> 
                      (_uuid(linea_id, "linea_id"), cantidad, _uuid(picker), clave, corr))
 
 
+def registrar_surtido(linea_id: str, encontradas: int, motivo: str | None, descripcion: str | None,
+                      picker: str, clave: str, corr: str) -> dict:
+    """API-OPS-07: «encontré N de las pendientes»; surte N y reporta la diferencia como faltante en una transacción."""
+    return _ejecutar("SELECT operacion.registrar_surtido(%s, %s, %s, %s, %s, %s, %s) AS r",
+                     (_uuid(linea_id, "linea_id"), encontradas, motivo, descripcion, _uuid(picker), clave, corr))
+
+
+def preparar_escenario(tienda_id: int, sku: str, objetivo: int, actor: str) -> dict:
+    return _ejecutar("SELECT inventario.preparar_escenario(%s::smallint, %s, %s, %s) AS r", (tienda_id, sku, objetivo, actor))
+
+
+def nombres(conn, ids) -> dict:
+    """Nombre visible de quien operó (sesiones simuladas; en producción vendrá del proveedor de identidad)."""
+    ids = sorted({str(i) for i in ids if i})
+    if not ids:
+        return {}
+    return {str(f["usuario_id"]): f for f in conn.execute(
+        "SELECT usuario_id, nombre, rol, tienda_id FROM acceso.sesion_demo WHERE usuario_id::text = ANY(%s)", (ids,)).fetchall()}
+
+
+def detalle_para_tienda(conn, pedido_id: str) -> dict:
+    """Detalle del pedido para el picker: cantidades calculadas en el servidor (misma fórmula que _preparar_linea)."""
+    lineas = conn.execute(
+        """SELECT l.linea_id, l.sku, COALESCE(pr.descripcion, l.sku) AS descripcion, l.precio_unitario,
+                  l.cantidad_pedida, l.cantidad_surtida, l.cantidad_cancelada, l.estado,
+                  COALESCE(f.por_validar, 0) AS por_validar,
+                  l.cantidad_pedida - l.cantidad_surtida - l.cantidad_cancelada - COALESCE(f.por_validar, 0) AS pendiente,
+                  e.vendible, e.comprometido, e.estado AS estado_existencia
+             FROM pedidos.linea_pedido l
+             JOIN pedidos.pedido pe ON pe.pedido_id = l.pedido_id
+             LEFT JOIN catalogo.producto pr ON pr.sku = l.sku
+             LEFT JOIN inventario.existencia e ON e.tienda_id = pe.tienda_id AND e.sku = l.sku
+             LEFT JOIN (SELECT linea_id, sum(faltantes)::int AS por_validar FROM operacion.reporte_faltante
+                         WHERE estado = 'POR_VALIDAR' GROUP BY linea_id) f ON f.linea_id = l.linea_id
+            WHERE l.pedido_id = %s ORDER BY l.sku""", (pedido_id,)).fetchall()
+    prep = conn.execute(
+        """SELECT datos->>'picker_id' AS picker_id, creado_en FROM comun.outbox
+            WHERE tipo = 'PreparacionIniciada' AND datos->>'pedido_id' = %s ORDER BY creado_en DESC LIMIT 1""",
+        (str(pedido_id),)).fetchone()
+    preparacion = None
+    if prep:
+        n = nombres(conn, [prep["picker_id"]]).get(prep["picker_id"])
+        preparacion = {"picker_id": prep["picker_id"], "picker": n["nombre"] if n else None, "desde": prep["creado_en"]}
+    return {"lineas": lineas, "preparacion": preparacion}
+
+
 def reportar_faltante(linea_id: str, encontradas: int, faltantes: int, motivo: str, descripcion: str | None,
                       picker: str, clave: str, corr: str) -> dict:
     return _ejecutar("SELECT operacion.reportar_faltante(%s, %s, %s, %s, %s, %s, %s, %s) AS r",

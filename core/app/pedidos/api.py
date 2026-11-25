@@ -1,7 +1,7 @@
 import uuid
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, Header, Request
+from fastapi import APIRouter, Depends, Header, Query, Request
 from pydantic import BaseModel, Field, conlist
 
 from ..db import transaccion
@@ -69,14 +69,17 @@ def consultar_pedido(pedido_id: str, usuario: Usuario = Depends(requiere_rol("CL
 
 
 @router.get("/v1/pedidos/{pedido_id}/bitacora", summary="API-PED-10 BitacoraCliente (tiempo real, sin datos internos del personal)")
-def bitacora_cliente(pedido_id: str, usuario: Usuario = Depends(requiere_rol("CLIENTE", "ATENCION", "SUPERVISOR", "AUDITOR"))):
+def bitacora_cliente(pedido_id: str, vista: str = Query("cliente", pattern="^(cliente|personal)$"),
+                     usuario: Usuario = Depends(requiere_rol("CLIENTE", "ATENCION", "SUPERVISOR", "ENCARGADO", "AUDITOR"))):
+    if vista == "personal" and not set(usuario.roles) & {"ATENCION", "SUPERVISOR", "ENCARGADO", "AUDITOR"}:
+        raise ErrorNegocio("NO_AUTORIZADO", "La vista del personal requiere ATENCION, SUPERVISOR, ENCARGADO o AUDITOR")
     try:
         pedido_id = str(uuid.UUID(pedido_id))
     except ValueError as exc:
         raise ErrorNegocio("NO_ENCONTRADO", "Pedido inexistente") from exc
     with transaccion() as conn:
         _verificar_dueno(conn, pedido_id, usuario)
-        return servicio.bitacora_cliente(conn, pedido_id)
+        return servicio.bitacora_cliente(conn, pedido_id, vista)
 
 
 @router.post("/v1/pedidos/{pedido_id}/pago", status_code=202, summary="API-PED-03 IniciarPago (una sola llamada de cobro)")

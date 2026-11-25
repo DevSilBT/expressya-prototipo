@@ -60,6 +60,10 @@
   .tl li.ultimo::before { background:var(--naranja); }
   .tl .h { color:var(--suave); font-size:12px; } .tl .t { font-weight:600; } .tl .d { font-size:13px; }
   @media (max-width: 600px) { table { display:block; overflow-x:auto; white-space:nowrap; } main { padding:12px; } }
+  .linea-picker { border:1px solid var(--borde); border-radius:10px; padding:12px; margin-top:10px; background:#fff; }
+  .linea-picker .nombre { font-size:17px; font-weight:600; }
+  .cifras { display:flex; flex-wrap:wrap; gap:6px 14px; margin:6px 0; font-size:14px; }
+  .cifras .clave { background:#fff4e0; padding:1px 8px; border-radius:8px; }
   .nota { background:#eef4fb; border:1px solid #cfe0f3; padding:8px 10px; border-radius:8px; font-size:13px; color:#25466e; }
 </style>
 </head>
@@ -167,12 +171,19 @@
           <button class="btn" onclick="contar()">Registrar conteo</button></div>
         <p class="muted">Si no coincide con el sistema, el producto se bloquea para la venta y se crea un ajuste que debe autorizar otra persona.</p></div>
       <div class="tarjeta"><h2>Ajustes por autorizar</h2><div id="ajustes"></div></div>
+      <div class="tarjeta"><h2>Caso del profesor: lógico 3, físico 2</h2>
+        <p class="muted" style="margin-top:0">Deja el «Producto Zeta» con inventario lógico de 3 unidades en la Dark Store 5 (CP 53400).
+          Solo sube el saldo con un movimiento auditado y únicamente si no hay un caso abierto. No existe en producción.</p>
+        <button class="btn naranja" onclick="prepararZeta()">Preparar escenario Zeta</button><div id="zeta-res"></div></div>
     </div>
 
     <div id="t-auditor" class="oculto">
       <div class="tarjeta"><h2>Historial de existencia</h2>
         <div class="fila"><div><label>Producto</label><select id="h-sku"></select></div><button class="btn" onclick="historial()">Consultar</button></div>
         <div id="historial" style="margin-top:10px"></div></div>
+      <div class="tarjeta"><h2>Pedidos de la tienda · bitácora (quién y cuándo)</h2>
+        <button class="btn sec" onclick="pedidosTienda()">Cargar pedidos</button>
+        <div id="ped-tienda" style="margin-top:10px"></div><div id="bit-tienda"></div></div>
     </div>
   </section>
 </main>
@@ -458,7 +469,7 @@ async function verPedido(id, silencioso = false) {
       ${h.lineas.map((l) => `<tr><td>${esc(l.descripcion)} <span class="muted">${esc(l.sku)}</span></td><td>${l.pedidas}</td><td>${l.surtidas}</td><td>${l.canceladas}</td><td>${chip(l.estado)}</td></tr>`).join('')}</table>
     <p>Total $${dinero(h.total)} · Mercancía $${dinero(h.subtotal_mercancia)} · Envío $${dinero(h.envio)} · Propina $${dinero(h.propina)}</p>
     <b>Bitácora del pedido</b> <span class="muted">(${h.eventos.length} movimientos · ${seguimiento})</span>
-    <ul class="tl">${h.eventos.map((e, i) => `<li class="${i === h.eventos.length - 1 ? 'ultimo' : ''}"><div class="h">${hora(e.hora)}</div>
+    <ul class="tl">${h.eventos.map((e, i) => `<li class="${i === h.eventos.length - 1 ? 'ultimo' : ''}"><div class="h">${hora(e.hora)} · ${esc(e.por || '')}</div>
       <div class="t">${esc(e.titulo)}</div><div class="d">${esc(e.detalle)}</div></li>`).join('')}</ul>${espera}`;
   if (silencioso) marcarVivo();
 }
@@ -480,7 +491,7 @@ async function entrarTienda() {
     const prods = (await api('GET', '/v1/catalogo?codigo_postal=' + (TIENDAS.find((t) => t.tienda_id === tienda).codigos_postales[0] || '00000'))).productos;
     const opts = prods.map((p) => `<option value="${p.sku}">${esc(p.descripcion)} (${p.sku})</option>`).join('');
     $('cnt-sku').innerHTML = opts; $('h-sku').innerHTML = opts;
-    if (rol === 'PICKER') bandejaPicker(); else if (rol !== 'AUDITOR') bandejaSupervisor();
+    if (rol === 'PICKER') bandejaPicker(); else if (rol !== 'AUDITOR') bandejaSupervisor(); if (rol !== 'PICKER') pedidosTienda();
   } catch (e) { aviso(e.message, 'mal'); }
 }
 const T = () => `/v1/tiendas/${STAFF.tienda}`;
@@ -488,56 +499,97 @@ const T = () => `/v1/tiendas/${STAFF.tienda}`;
 async function bandejaPicker() {
   try {
     const d = await api('GET', T() + '/pedidos', { token: STAFF.token });
-    $('bandeja').innerHTML = d.pedidos.length ? '<table><tr><th>Pedido</th><th>Pagado</th><th>Líneas</th><th>Pendientes</th><th>Estado</th><th></th></tr>' +
-      d.pedidos.map((p) => `<tr><td><code>${p.pedido_id.slice(0, 8)}</code></td><td>${p.hora_confirmacion ? new Date(p.hora_confirmacion).toLocaleTimeString() : '—'}</td>
-        <td>${p.lineas}</td><td>${p.unidades_pendientes}</td><td>${chip(p.estado)}</td>
+    $('bandeja').innerHTML = d.pedidos.length ? '<table><tr><th>Pedido</th><th>Pagado</th><th>Unidades</th><th>Por surtir</th><th>Por validar</th><th>Estado</th><th></th></tr>' +
+      d.pedidos.map((p) => `<tr><td><code>${p.pedido_id.slice(0, 8)}</code></td><td>${p.hora_confirmacion ? hora(p.hora_confirmacion) : '—'}</td>
+        <td>${p.unidades_pedidas}</td><td><b>${p.unidades_pendientes - p.unidades_por_validar}</b></td><td>${p.unidades_por_validar}</td><td>${chip(p.estado)}</td>
         <td><button class="btn sec" onclick="abrirPedido('${p.pedido_id}')">Abrir</button></td></tr>`).join('') + '</table>'
       : '<p class="muted">No hay pedidos por preparar en esta tienda.</p>';
   } catch (e) { aviso(e.message, 'mal'); }
 }
+
+// Una clave de idempotencia por INTENCIÓN (línea + cantidad): un doble clic o un reintento no surte dos veces.
+const INTENCION = {};
+let OCUPADO = false;
+const MOTIVOS = { NO_ENCONTRADO: 'No lo encuentro', DANADO_EN_ANAQUEL: 'Dañado en anaquel', CADUCADO: 'Caducado',
+  UBICACION_INCORRECTA: 'Ubicación incorrecta', OTRO: 'Otro (describe)' };
 async function abrirPedido(id) {
   try {
     const p = await api('GET', `${T()}/pedidos/${id}`, { token: STAFF.token });
-    const porValidar = Object.fromEntries(p.faltantes_por_validar.map((f) => [f.sku, f.faltantes]));
     const caja = $('t-pedido'); caja.classList.remove('oculto');
+    const prep = p.preparacion ? ` · preparación iniciada por <b>${esc(p.preparacion.picker || 'picker')}</b> a las ${hora(p.preparacion.desde)}` : '';
     caja.innerHTML = `<h2>Pedido <code>${id.slice(0, 8)}</code> ${chip(p.estado)}</h2>
+      <p class="muted" style="margin-top:0">Pagado a las ${p.hora_confirmacion ? hora(p.hora_confirmacion) : '—'}${prep}. Las unidades ya están apartadas para este pedido.</p>
       ${p.estado === 'PAGADO' ? `<button class="btn naranja" onclick="iniciarPrep('${id}')">Iniciar preparación</button>` : ''}
-      <table style="margin-top:10px"><tr><th>Producto</th><th>Pedidas</th><th>Surtidas</th><th>Canceladas</th><th>Por validar</th><th>Estado</th><th>Acciones</th></tr>
-      ${p.lineas.map((l) => { const pend = l.cantidad_pedida - l.cantidad_surtida - l.cantidad_cancelada - (porValidar[l.sku] || 0);
-        return `<tr><td>${esc(l.sku)}</td><td>${l.cantidad_pedida}</td><td>${l.cantidad_surtida}</td><td>${l.cantidad_cancelada}</td><td>${porValidar[l.sku] || 0}</td><td>${chip(l.estado)}</td>
-        <td>${p.estado === 'EN_PREPARACION' && pend > 0 ? `
-          <div class="fila"><input type="number" id="q-${l.linea_id}" value="${pend}" min="1" max="${pend}" style="width:60px">
-            <button class="btn" onclick="surtir('${id}','${l.linea_id}')">Surtir</button></div>
-          <div class="fila" style="margin-top:6px"><input type="number" id="f-${l.linea_id}" value="1" min="1" max="${pend}" style="width:60px">
-            <select id="m-${l.linea_id}"><option>NO_ENCONTRADO</option><option>DANADO_EN_ANAQUEL</option><option>CADUCADO</option><option>UBICACION_INCORRECTA</option></select>
-            <button class="btn rojo" onclick="faltante('${id}','${l.linea_id}', ${pend})">Reportar faltante</button></div>` : ''}</td></tr>`; }).join('')}
-      </table>`;
+      ${p.lineas.map((l) => lineaPicker(id, p.estado, l)).join('')}`;
   } catch (e) { aviso(e.message, 'mal'); }
+}
+function lineaPicker(id, estado, l) {
+  const abierta = estado === 'EN_PREPARACION' && l.pendiente > 0;
+  const est = l.estado_existencia && l.estado_existencia !== 'NORMAL'
+    ? `${chip(l.estado_existencia)} <span class="muted">venta bloqueada en la tienda hasta validar</span>` : '';
+  let acciones = '';
+  if (abierta) {
+    acciones = `<div class="fila" style="margin-top:8px">
+        <button class="btn" onclick="surtidoVerificado('${id}','${l.linea_id}', ${l.pendiente}, ${l.pendiente})">Encontré las ${l.pendiente}</button>
+        <button class="btn sec" onclick="$('menos-${l.linea_id}').classList.toggle('oculto')">Encontré menos…</button></div>
+      <div id="menos-${l.linea_id}" class="oculto nota" style="margin-top:8px">
+        <div class="fila"><div><label>¿Cuántas encontraste?</label>
+          <div class="paso"><button onclick="ajustarMenos('${l.linea_id}', -1, ${l.pendiente})">−</button>
+            <input id="enc-${l.linea_id}" type="number" inputmode="numeric" min="0" max="${l.pendiente - 1}" value="${l.pendiente - 1}"
+                   oninput="ajustarMenos('${l.linea_id}', 0, ${l.pendiente})">
+            <button onclick="ajustarMenos('${l.linea_id}', 1, ${l.pendiente})">+</button></div></div>
+          <div><label>Motivo del faltante</label><select id="mot-${l.linea_id}" onchange="$('des-${l.linea_id}').classList.toggle('oculto', this.value !== 'OTRO')">
+            ${Object.entries(MOTIVOS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></div>
+          <input id="des-${l.linea_id}" class="oculto" placeholder="Describe el motivo" style="min-width:200px"></div>
+        <p id="pre-${l.linea_id}" style="margin:8px 0">Se surtirán <b>${l.pendiente - 1}</b> y se reportará <b>1</b> faltante al supervisor.</p>
+        <button class="btn rojo" onclick="confirmarMenos('${id}','${l.linea_id}', ${l.pendiente})">Confirmar</button></div>`;
+  } else if (l.por_validar > 0) acciones = '<p class="muted" style="margin:6px 0 0">Esperando que el supervisor valide el faltante.</p>';
+  else if (estado === 'EN_PREPARACION' || l.pendiente === 0) acciones = '<p class="muted" style="margin:6px 0 0">Línea cerrada.</p>';
+  return `<div class="linea-picker">
+    <div class="nombre">${esc(l.descripcion)} <span class="muted">${esc(l.sku)}</span> ${chip(l.estado)}</div>
+    <div class="cifras"><span>Pedidas <b>${l.cantidad_pedida}</b></span><span>Surtidas <b>${l.cantidad_surtida}</b></span>
+      <span>Por validar <b>${l.por_validar}</b></span><span>Canceladas <b>${l.cantidad_cancelada}</b></span>
+      <span class="clave">Por surtir <b>${l.pendiente}</b></span></div>
+    <div class="muted" style="font-size:12px">Ubicación en la tienda: sin registrar · Sistema: vendible ${l.vendible ?? '—'}, comprometido ${l.comprometido ?? '—'} ${est}</div>
+    ${acciones}</div>`;
+}
+function ajustarMenos(linea, d, pend) {
+  const inp = $('enc-' + linea);
+  let v = parseInt(inp.value, 10); if (!Number.isFinite(v)) v = 0;
+  v = Math.min(Math.max(0, v + d), pend - 1); inp.value = v;
+  $('pre-' + linea).innerHTML = `Se surtirán <b>${v}</b> y se reportará <b>${pend - v}</b> faltante${pend - v > 1 ? 's' : ''} al supervisor.`;
+}
+function confirmarMenos(id, linea, pend) {
+  const v = parseInt($('enc-' + linea).value, 10), motivo = $('mot-' + linea).value, desc = $('des-' + linea).value.trim();
+  if (!Number.isFinite(v) || v < 0 || v >= pend) return aviso(`Escribe entre 0 y ${pend - 1}`, 'aviso');
+  if (motivo === 'OTRO' && desc.length < 3) return aviso('Describe el motivo del faltante', 'aviso');
+  surtidoVerificado(id, linea, pend, v, motivo, desc || null);
+}
+async function surtidoVerificado(id, linea, pend, encontradas, motivo = null, descripcion = null) {
+  if (OCUPADO) return;
+  const k = linea + ':' + encontradas + ':' + (motivo || '');
+  INTENCION[k] = INTENCION[k] || 'R-' + uuid();
+  OCUPADO = true; document.querySelectorAll('#t-pedido button').forEach((b) => (b.disabled = true));
+  try {
+    const r = await api('POST', `/v1/lineas/${linea}/surtido-verificado`, { token: STAFF.token, clave: INTENCION[k],
+      cuerpo: { encontradas, motivo, descripcion } });
+    delete INTENCION[k];
+    aviso(r.faltantes > 0 ? `Surtidas ${r.surtidas} · faltante de ${r.faltantes} enviado al supervisor; la venta del producto queda bloqueada en tu tienda`
+      : `Surtidas ${r.surtidas} · pedido ${r.estado_pedido}`, r.faltantes > 0 ? 'aviso' : 'ok');
+  } catch (e) { aviso(e.message + (e.datos?.detail ? '' : ''), 'mal'); }
+  finally { OCUPADO = false; abrirPedido(id); bandejaPicker(); }
 }
 async function iniciarPrep(id) {
   try { await api('POST', `/v1/pedidos/${id}/preparacion`, { token: STAFF.token }); aviso('Preparación iniciada'); abrirPedido(id); bandejaPicker(); }
   catch (e) { aviso(e.message, 'mal'); }
 }
-async function surtir(id, linea) {
-  try {
-    const r = await api('POST', `/v1/lineas/${linea}/surtido`, { token: STAFF.token, clave: 'S-' + uuid(), cuerpo: { cantidad: Number($('q-' + linea).value) } });
-    aviso('Surtido · pedido ' + r.estado_pedido); abrirPedido(id); bandejaPicker();
-  } catch (e) { aviso(e.message, 'mal'); }
-}
-async function faltante(id, linea, pend) {
-  const falt = Number($('f-' + linea).value);
-  try {
-    await api('POST', `/v1/lineas/${linea}/faltantes`, { token: STAFF.token, clave: 'K3-' + uuid(),
-      cuerpo: { encontradas: Math.max(0, pend - falt), faltantes: falt, motivo: $('m-' + linea).value } });
-    aviso('Faltante reportado: el producto quedó en verificación hasta que el supervisor lo valide', 'aviso'); abrirPedido(id);
-  } catch (e) { aviso(e.message, 'mal'); }
-}
 
 async function bandejaSupervisor() {
   try {
     const f = await api('GET', T() + '/faltantes', { token: STAFF.token });
-    $('faltantes').innerHTML = f.faltantes.length ? '<table><tr><th>Pedido</th><th>Producto</th><th>Faltan</th><th>Motivo</th><th>Evidencia</th><th></th></tr>' +
-      f.faltantes.map((x) => `<tr><td><code>${x.pedido_id.slice(0, 8)}</code></td><td>${esc(x.sku)}</td><td>${x.faltantes}</td><td>${esc(x.motivo)}</td>
+    $('faltantes').innerHTML = f.faltantes.length ? '<table><tr><th>Pedido</th><th>Producto</th><th>Encontradas</th><th>Faltan</th><th>Motivo</th><th>Evidencia</th><th></th></tr>' +
+      f.faltantes.map((x) => `<tr><td><code>${x.pedido_id.slice(0, 8)}</code></td><td>${esc(x.descripcion || x.sku)}</td><td>${x.encontradas}</td><td><b>${x.faltantes}</b></td>
+        <td>${esc(MOTIVOS[x.motivo] || x.motivo)}${x.descripcion_faltante ? '<div class="linea-evt">' + esc(x.descripcion_faltante) + '</div>' : ''}</td>
         <td><input id="ev-${x.faltante_id}" placeholder="Revisé anaquel y bodega" style="width:100%"></td>
         <td class="fila"><button class="btn" onclick="validar('${x.faltante_id}', true)">Validar</button>
             <button class="btn sec" onclick="validar('${x.faltante_id}', false)">No validar</button></td></tr>`).join('') + '</table>'
@@ -555,9 +607,10 @@ async function validar(id, valido) {
   const ev = $('ev-' + id).value.trim() || (valido ? 'Revisé anaquel y bodega' : 'El producto sí está en la tienda');
   try {
     const r = await api('POST', `/v1/faltantes/${id}/validacion`, { token: STAFF.token, clave: 'V-' + uuid(), cuerpo: { valido, evidencia: ev } });
-    aviso(valido ? `Faltante validado · reembolso de $${r.reembolso_solicitado} · pedido ${r.estado_pedido}` : 'Faltante no validado: el picker debe volver a surtir');
+    aviso(valido ? `Faltante validado · se canceló esa parte y se solicitó el reembolso de $${r.reembolso_solicitado} · pedido ${r.estado_pedido}`
+      : 'Faltante no validado: la línea vuelve a quedar por surtir y el producto sigue en verificación hasta un conteo');
     bandejaSupervisor();
-  } catch (e) { aviso(e.status === 403 ? 'No puedes validar un faltante que tú reportaste' : e.message, 'mal'); }
+  } catch (e) { aviso(e.status === 403 ? 'No puedes validar un faltante que tú reportaste (INV-19)' : e.message, 'mal'); }
 }
 async function contar() {
   const sku = $('cnt-sku').value, cantidad = Number($('cnt-cantidad').value);
@@ -588,6 +641,37 @@ async function historial() {
         <td>${m.delta > 0 ? '+' : ''}${m.delta}</td><td>${m.saldo_antes} → ${m.saldo_despues}</td><td><code>${esc(String(m.actor).slice(0, 14))}</code></td>
         <td>${esc(m.motivo || '')}</td><td>${m.pedido_id ? '<code>' + String(m.pedido_id).slice(0, 8) + '</code>' : ''}</td></tr>`).join('')}</table>`;
   } catch (e) { aviso(e.message, 'mal'); }
+}
+
+// ---------------------------------------------------------------- tienda: pedidos y bitácora del personal (quién y cuándo)
+async function pedidosTienda() {
+  const est = ['PAGADO', 'EN_PREPARACION', 'COMPLETO', 'PARCIAL', 'CANCELADO_TOTAL'].map((e) => 'estado=' + e).join('&');
+  try {
+    const d = await api('GET', `${T()}/pedidos?${est}`, { token: STAFF.token });
+    $('ped-tienda').innerHTML = d.pedidos.length ? '<table><tr><th>Pedido</th><th>Pagado</th><th>Unidades</th><th>Estado</th><th></th></tr>' +
+      d.pedidos.map((p) => `<tr><td><code>${p.pedido_id.slice(0, 8)}</code></td><td>${p.hora_confirmacion ? hora(p.hora_confirmacion) : '—'}</td>
+        <td>${p.unidades_pedidas}</td><td>${chip(p.estado)}</td>
+        <td><button class="btn sec" onclick="bitacoraPersonal('${p.pedido_id}')">Bitácora</button></td></tr>`).join('') + '</table>'
+      : '<p class="muted">Sin pedidos en esta tienda.</p>';
+  } catch (e) { aviso(e.message, 'mal'); }
+}
+async function bitacoraPersonal(id) {
+  try {
+    const h = await api('GET', `/v1/pedidos/${id}/bitacora?vista=personal`, { token: STAFF.token });
+    $('bit-tienda').innerHTML = `<h3 style="margin:10px 0 4px">Pedido <code>${id.slice(0, 8)}</code> ${chip(h.estado)} <span class="muted">${esc(h.estado_texto)}</span></h3>
+      <table><tr><th>Producto</th><th>Pedidas</th><th>Surtidas</th><th>Canceladas</th><th>Estado</th></tr>
+      ${h.lineas.map((l) => `<tr><td>${esc(l.descripcion)}</td><td>${l.pedidas}</td><td>${l.surtidas}</td><td>${l.canceladas}</td><td>${chip(l.estado)}</td></tr>`).join('')}</table>
+      <ul class="tl">${h.eventos.map((e, i) => `<li class="${i === h.eventos.length - 1 ? 'ultimo' : ''}">
+        <div class="h">${new Date(e.hora).toLocaleString()} · <b>${esc(e.por)}</b>${e.correlacion_id ? ' · corr ' + esc(e.correlacion_id.slice(0, 8)) : ''}</div>
+        <div class="t">${esc(e.titulo)}</div><div class="d">${esc(e.detalle)}</div></li>`).join('')}</ul>`;
+  } catch (e) { aviso(e.status === 403 ? 'Tu rol no puede ver la bitácora del personal' : e.message, 'mal'); }
+}
+async function prepararZeta() {
+  try {
+    const r = await api('POST', '/v1/demo/escenario-zeta', { token: STAFF.token });
+    $('zeta-res').innerHTML = `<p class="nota">Listo: Producto Zeta con inventario lógico <b>${r.vendible}</b> en la tienda 5
+      (${r.agregadas ? 'se repusieron ' + r.agregadas + ' con un movimiento auditado' : 'ya estaba en 3'}).<br>${esc(r.guion)}</p>`;
+  } catch (e) { aviso(e.datos?.code === 'ESCENARIO_OCUPADO' ? 'El caso anterior sigue abierto: ' + (e.datos.detail || '') : e.message, 'mal'); }
 }
 
 iniciar();

@@ -107,19 +107,52 @@ def _ordenar(items: list[dict]) -> list[dict]:
     return salida + sorted(grupo, key=lambda x: RANGO.get(x["tipo"], 6))
 
 
+def _actor(tipo: str, d: dict, cliente_id) -> tuple[str, str | None]:
+    """Quién originó el evento: (rol, id). El id solo se muestra en la vista del personal."""
+    if tipo in ("PedidoCreado", "ReservaCreada", "SolicitudReservaRechazada", "PagoSolicitado"):
+        return "Cliente", str(cliente_id)
+    if tipo in ("PreparacionIniciada", "LineaSurtida", "FaltanteReportado"):
+        return "Picker", d.get("picker_id")
+    if tipo in ("FaltanteValidado", "FaltanteNoValidado"):
+        return "Supervisor", d.get("supervisor_id")
+    if tipo in ("PagoResultado", "ReservaConfirmada", "ReservaLiberada", "REEMBOLSO_CONFIRMADO", "PEDIDO_CONFIRMADO", "PAGO_RECHAZADO"):
+        return "Pagos", None
+    return "Sistema", None
+
+
+POR_CLIENTE = {"Cliente": "Tú", "Picker": "La tienda", "Supervisor": "La tienda", "Pagos": "Pagos", "Sistema": "Sistema"}
+
+
+def _por(rol: str, actor_id, vista: str, personas: dict) -> dict:
+    if vista != "personal":
+        return {"por": POR_CLIENTE.get(rol, rol)}
+    p = personas.get(str(actor_id)) if actor_id else None
+    nombre = p["nombre"] if p else (f"{str(actor_id)[:8]}" if actor_id else None)
+    return {"por": f"{rol} · {nombre}" if nombre else rol, "rol": rol, "actor_id": str(actor_id) if actor_id else None}
+
+
 def armar(pedido: dict, lineas: list[dict], reserva: dict | None, eventos: list[dict], avisos: list[dict],
-          ahora: datetime) -> dict:
+          ahora: datetime, vista: str = "cliente", personas: dict | None = None) -> dict:
     """pedido: fila de pedidos.pedido; lineas: con descripcion; reserva: la más reciente (o None);
     eventos: filas de comun.outbox (tipo, creado_en, datos) del pedido; avisos: notificaciones APP del pedido."""
     nombres = {l["sku"]: l.get("descripcion") or l["sku"] for l in lineas}
     nombre = lambda sku: nombres.get(sku, sku or "un producto")
     linea_de_tiempo = []
     tipos = set()
+    personas = personas or {}
+    cliente_id = pedido.get("cliente_id")
     for e in eventos:
-        t = _texto(e["tipo"], e["datos"] or {}, nombre)
+        d = e["datos"] or {}
+        t = _texto(e["tipo"], d, nombre)
         tipos.add(e["tipo"])
         if t:
-            linea_de_tiempo.append({"hora": e["creado_en"], "tipo": e["tipo"], "titulo": t[0], "detalle": t[1]})
+            item = {"hora": e["creado_en"], "tipo": e["tipo"], "titulo": t[0], "detalle": t[1],
+                    **_por(*_actor(e["tipo"], d, cliente_id), vista, personas)}
+            if vista == "personal":
+                item["correlacion_id"] = str(e["correlacion_id"]) if e.get("correlacion_id") else None
+                if e["tipo"] == "FaltanteReportado":
+                    item["detalle"] += f" Motivo: {d.get('motivo')}; faltan {d.get('faltantes')}."
+            linea_de_tiempo.append(item)
 
     reembolso_confirmado = False
     for a in avisos:
@@ -128,12 +161,13 @@ def armar(pedido: dict, lineas: list[dict], reserva: dict | None, eventos: list[
             reembolso_confirmado = True
             monto = f" por {_dinero(d['monto'])}" if d.get("monto") else ""
             linea_de_tiempo.append({"hora": a["creada_en"], "tipo": "REEMBOLSO_CONFIRMADO", "titulo": "Reembolso confirmado",
-                                    "detalle": f"La pasarela aplicó tu reembolso{monto}."})
+                                    "detalle": f"La pasarela aplicó tu reembolso{monto}.", **_por("Pagos", None, vista, personas)})
         elif "PagoResultado" not in tipos and a["tipo"] in ("PEDIDO_CONFIRMADO", "PAGO_RECHAZADO"):
             # Pedidos anteriores a la publicación de PagoResultado: se usa el aviso para no perder el dato
             ok = a["tipo"] == "PEDIDO_CONFIRMADO"
             linea_de_tiempo.append({"hora": a["creada_en"], "tipo": a["tipo"], "titulo": "Pago aprobado" if ok else "Pago rechazado",
-                                    "detalle": "Tu pedido quedó confirmado." if ok else "No se hizo ningún cargo."})
+                                    "detalle": "Tu pedido quedó confirmado." if ok else "No se hizo ningún cargo.",
+                                    **_por("Pagos", None, vista, personas)})
 
     estado = pedido["estado"]
     reserva_info = None
@@ -147,7 +181,8 @@ def armar(pedido: dict, lineas: list[dict], reserva: dict | None, eventos: list[
                 estado = "RESERVA_VENCIDA"
             if "ReservaExpirada" not in tipos:
                 linea_de_tiempo.append({"hora": reserva["expira_en"], "tipo": "ReservaVencida", "titulo": "La reserva venció",
-                                        "detalle": "Pasaron los 5 minutos sin pago: los productos se liberaron y no hubo cobro."})
+                                        "detalle": "Pasaron los 5 minutos sin pago: los productos se liberaron y no hubo cobro.",
+                                        **_por("Sistema", None, vista, personas)})
 
     linea_de_tiempo = _ordenar(linea_de_tiempo)
     if estado in FINALES or estado == "RESERVA_VENCIDA":   # una reserva vencida ya no cambia para el cliente
@@ -168,5 +203,6 @@ def armar(pedido: dict, lineas: list[dict], reserva: dict | None, eventos: list[
         "eventos": linea_de_tiempo,
         "reembolso_confirmado": reembolso_confirmado,
         "en_curso": en_curso,
+        "vista": vista,
         "hora_servidor": ahora,
     }

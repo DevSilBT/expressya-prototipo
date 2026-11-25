@@ -65,6 +65,21 @@ jobs:
           pytest -v tests 2>&1 | tee evidencia/pytest.txt
           pytest -v tests_pagos 2>&1 | tee evidencia/pytest_pagos.txt
 
+      - name: Rendimiento y volumen (core real con PostgreSQL 16; sin Azure)
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/expressya_carga
+          JWT_SECRETO: ci
+          AMBIENTE: ci
+          DB_POOL_MAX: "20"
+        run: |
+          set -o pipefail
+          docker run --rm --network host -v "$PWD:/w" -w /w -e PGHOST -e PGUSER -e PGPASSWORD postgres:16 bash -c \
+            'createdb expressya_carga && for f in db/core/0*.sql; do psql -q -v ON_ERROR_STOP=1 -d expressya_carga -f "$f"; done'
+          (cd core && nohup uvicorn app.main:app --port 8000 --workers 1 > ../evidencia/uvicorn_carga.log 2>&1 &)
+          for i in $(seq 1 30); do curl -sf localhost:8000/salud >/dev/null && break; sleep 1; done
+          cd evidencia
+          python ../infra/carga/carga.py --url http://localhost:8000 todo -n 300 -c 20 2>&1 | tee carga.txt
+
       - name: Guardar evidencia
         if: always()
         uses: actions/upload-artifact@v4

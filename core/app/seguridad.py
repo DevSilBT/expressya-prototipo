@@ -1,5 +1,7 @@
 """C0 · Autenticación (JWT HS256 emitido por el módulo de acceso) y autorización por rol (matriz §26.2 de S2)."""
 import hmac
+import logging
+import time
 import uuid
 
 import jwt
@@ -7,6 +9,9 @@ from fastapi import Depends, Header, Request
 
 from .config import ajustes
 from .errores import ErrorNegocio
+
+
+_log = logging.getLogger("http")
 
 
 class Usuario:
@@ -43,6 +48,12 @@ async def middleware_correlacion(request: Request, call_next):
     """Asigna o propaga X-Correlation-Id (RNF07) y lo devuelve en la respuesta."""
     corr = request.headers.get("X-Correlation-Id") or str(uuid.uuid4())
     request.state.correlacion_id = corr
+    t0 = time.perf_counter()
     respuesta = await call_next(request)
+    ms = (time.perf_counter() - t0) * 1000
     respuesta.headers["X-Correlation-Id"] = corr
+    # Tiempo dentro del servidor: el total que mide el cliente menos este valor = red + arranque en frío + TLS
+    respuesta.headers["Server-Timing"] = f"app;dur={ms:.1f}"
+    _log.info("solicitud metodo=%s ruta=%s estado=%s ms=%.1f corr=%s", request.method, request.url.path,
+              respuesta.status_code, ms, corr)
     return respuesta
