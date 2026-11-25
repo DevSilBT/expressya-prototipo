@@ -8,6 +8,7 @@ from psycopg.types.json import Jsonb
 from ..db import transaccion
 from ..errores import ErrorNegocio
 from ..inventario import servicio as inventario
+from . import bitacora
 from .cliente_pagos import cliente_pagos
 
 ESTADOS_SIN_DESENLACE = ("RESERVADO", "PAGO_SOLICITADO", "PAGO_INCIERTO", "NO_PAGADO", "ABANDONADO", "ESPERANDO_DECISION")
@@ -113,13 +114,17 @@ def iniciar_pago(pedido_id: str, clave_k2: str, corr: str) -> dict:
         conn.execute("UPDATE pedidos.pedido SET estado = 'PAGO_SOLICITADO', actualizado_en = clock_timestamp() WHERE pedido_id = %s",
                      (pedido_id,))
         total = str(p["total"])
+        _publicar(conn, "PagoSolicitado", str(pedido_id), corr, {"pedido_id": str(pedido_id), "monto": total})
     respuesta = cliente_pagos.solicitar_cobro(str(pedido_id), total, clave_k2, corr)
     if respuesta.get("estado") in ("APROBADO", "RECHAZADO", "INCIERTO") and respuesta.get("pago_id"):
         procesar_resultado_pago({**respuesta, "pedido_id": str(pedido_id)}, corr)   # también llegará por evento: idempotente
     elif respuesta.get("estado") == "INCIERTO":
         with transaccion() as conn:
-            conn.execute("UPDATE pedidos.pedido SET estado = 'PAGO_INCIERTO' WHERE pedido_id = %s AND estado = 'PAGO_SOLICITADO'",
-                         (pedido_id,))
+            cambio = conn.execute("UPDATE pedidos.pedido SET estado = 'PAGO_INCIERTO' WHERE pedido_id = %s AND estado = 'PAGO_SOLICITADO' "
+                                  "RETURNING pedido_id", (pedido_id,)).fetchone()
+            if cambio:
+                _publicar(conn, "PagoResultado", str(pedido_id), corr,
+                          {"pedido_id": str(pedido_id), "desenlace": "PAGO_INCIERTO", "motivo": "SIN_RESPUESTA_DE_PAGOS"})
     with transaccion() as conn:
         return consultar(conn, pedido_id)
 
@@ -136,15 +141,17 @@ def procesar_resultado_pago(evento: dict, corr: str | None, actor: str = "M2", r
         p = conn.execute("SELECT estado, cliente_id, subtotal_mercancia FROM pedidos.pedido WHERE pedido_id = %s FOR UPDATE",
                          (pedido_id,)).fetchone()
         reserva = inventario.reserva_del_pedido(conn, pedido_id)
+        cambio = True
         if estado == "INCIERTO":
-            conn.execute("UPDATE pedidos.pedido SET estado = 'PAGO_INCIERTO' WHERE pedido_id = %s AND estado IN ('PAGO_SOLICITADO','RESERVADO')",
-                         (pedido_id,))
+            cambio = conn.execute("UPDATE pedidos.pedido SET estado = 'PAGO_INCIERTO' WHERE pedido_id = %s "
+                                  "AND estado IN ('PAGO_SOLICITADO','RESERVADO') RETURNING pedido_id", (pedido_id,)).fetchone() is not None
             resultado = {"desenlace": "PAGO_INCIERTO"}
         elif estado == "RECHAZADO":
             if reserva and reserva["estado"] == "ACTIVA":
                 inventario.liberar_reserva(conn, reserva["reserva_id"], "PAGO_RECHAZADO", f"lib:{n1}", actor, corr)
-            conn.execute("UPDATE pedidos.pedido SET estado = 'NO_PAGADO' WHERE pedido_id = %s AND estado IN ('PAGO_SOLICITADO','PAGO_INCIERTO','RESERVADO')",
-                         (pedido_id,))
+            cambio = conn.execute("UPDATE pedidos.pedido SET estado = 'NO_PAGADO' WHERE pedido_id = %s "
+                                  "AND estado IN ('PAGO_SOLICITADO','PAGO_INCIERTO','RESERVADO') RETURNING pedido_id",
+                                  (pedido_id,)).fetchone() is not None
             _notificar(conn, str(p["cliente_id"]), "PAGO_RECHAZADO", {"pedido_id": pedido_id}, f"rechazo:{pedido_id}")
             resultado = {"desenlace": "NO_PAGADO"}
         else:  # APROBADO: decide R-D02 dentro de M3
@@ -171,12 +178,38 @@ def procesar_resultado_pago(evento: dict, corr: str | None, actor: str = "M2", r
                 _notificar(conn, str(p["cliente_id"]), "CANCELACION_TOTAL", {"pedido_id": pedido_id, "causa": "PAGO_TARDIO"},
                            f"cancelacion:{pedido_id}")
                 resultado = {"desenlace": "PAGO_SIN_EXISTENCIA", "inventario": conf}
+        if cambio:   # para la bitácora del cliente (ADR-29): misma transacción que el cambio
+            _publicar(conn, "PagoResultado", pedido_id, corr, {"pedido_id": pedido_id, "desenlace": resultado["desenlace"]})
         if reparacion:
             _publicar(conn, "REPARACION_APLICADA", pedido_id, corr,
                       {"pedido_id": pedido_id, "pago_id": evento.get("pago_id"), "notificacion_id": n1,
                        "estado_pedido_antes": p["estado"], "accion": "REPROCESAR_RESULTADO_PAGO", "resultado": resultado})
         conn.execute("SELECT comun.guardar_resultado(%s, %s)", (f"evt:{n1}", Jsonb(resultado)))
         return resultado
+
+
+def bitacora_cliente(conn: Connection, pedido_id: str) -> dict:
+    """API-PED-10 · Bitácora del cliente en tiempo real (lee la bandeja de salida; sin datos internos)."""
+    pedido = conn.execute(
+        """SELECT pedido_id, tienda_id, estado, subtotal_mercancia, envio, propina, descuento_promocion, total
+             FROM pedidos.pedido WHERE pedido_id = %s""", (pedido_id,)).fetchone()
+    if not pedido:
+        raise ErrorNegocio("NO_ENCONTRADO", "Pedido inexistente")
+    lineas = conn.execute(
+        """SELECT l.sku, p.descripcion, l.precio_unitario, l.cantidad_pedida, l.cantidad_surtida, l.cantidad_cancelada, l.estado
+             FROM pedidos.linea_pedido l LEFT JOIN catalogo.producto p USING (sku)
+            WHERE l.pedido_id = %s ORDER BY l.sku""", (pedido_id,)).fetchall()
+    reserva = conn.execute(
+        """SELECT estado, expira_en FROM inventario.reserva WHERE pedido_id = %s ORDER BY creada_en DESC LIMIT 1""",
+        (pedido_id,)).fetchone()
+    eventos = conn.execute(
+        """SELECT tipo, creado_en, datos FROM comun.outbox WHERE datos->>'pedido_id' = %s ORDER BY creado_en""",
+        (str(pedido_id),)).fetchall()
+    avisos = conn.execute(
+        """SELECT tipo, datos, creada_en FROM notificaciones.notificacion
+            WHERE datos->>'pedido_id' = %s AND canal = 'APP' ORDER BY creada_en""", (str(pedido_id),)).fetchall()
+    ahora = conn.execute("SELECT clock_timestamp() AS t").fetchone()["t"]
+    return bitacora.armar(pedido, lineas, reserva, eventos, avisos, ahora)
 
 
 def procesar_resultado_ajuste(evento: dict, corr: str | None) -> dict:

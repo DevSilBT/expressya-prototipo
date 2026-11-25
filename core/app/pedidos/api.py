@@ -1,3 +1,4 @@
+import uuid
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Header, Request
@@ -65,6 +66,17 @@ def consultar_pedido(pedido_id: str, usuario: Usuario = Depends(requiere_rol("CL
     with transaccion() as conn:
         _verificar_dueno(conn, pedido_id, usuario)
         return servicio.consultar(conn, pedido_id)
+
+
+@router.get("/v1/pedidos/{pedido_id}/bitacora", summary="API-PED-10 BitacoraCliente (tiempo real, sin datos internos del personal)")
+def bitacora_cliente(pedido_id: str, usuario: Usuario = Depends(requiere_rol("CLIENTE", "ATENCION", "SUPERVISOR", "AUDITOR"))):
+    try:
+        pedido_id = str(uuid.UUID(pedido_id))
+    except ValueError as exc:
+        raise ErrorNegocio("NO_ENCONTRADO", "Pedido inexistente") from exc
+    with transaccion() as conn:
+        _verificar_dueno(conn, pedido_id, usuario)
+        return servicio.bitacora_cliente(conn, pedido_id)
 
 
 @router.post("/v1/pedidos/{pedido_id}/pago", status_code=202, summary="API-PED-03 IniciarPago (una sola llamada de cobro)")

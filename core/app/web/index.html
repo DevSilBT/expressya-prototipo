@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ExpressYA · Demostración</title>
+<title>ExpressYA · Equipo Dinamita</title>
+<link rel="icon" type="image/png" href="/app/logo.png">
 <style>
   :root { --azul:#1f3864; --azul2:#2e75b6; --naranja:#f28c28; --gris:#f4f6f9; --borde:#dfe3ea; --texto:#1d2433; --suave:#667085;
           --ok:#1a7f37; --mal:#c62828; --aviso:#b26a00; }
@@ -40,26 +41,59 @@
   .estado { font-weight:700; } .oculto { display:none; }
   .linea-evt { font-size:12px; color:var(--suave); }
   code { font-size:12px; }
+  header .logo { height:40px; background:#fff; border-radius:8px; padding:3px 8px; cursor:pointer; }
+  .vivo { font-size:12px; color:#9be7b0; align-self:center; margin-right:8px; } .vivo.pausa { color:#c9d6ea; }
+  .portada { max-width:760px; margin:24px auto; text-align:center; }
+  .portada .logo-grande { width:220px; max-width:60%; margin:8px auto 4px; display:block; }
+  .accesos { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:16px; margin-top:18px; }
+  .acceso { border:2px solid var(--borde); background:#fff; border-radius:14px; padding:22px 18px; cursor:pointer; text-align:left;
+            display:flex; flex-direction:column; gap:6px; font-size:15px; color:var(--texto); }
+  .acceso b { font-size:20px; color:var(--azul); } .acceso span { color:var(--suave); font-size:14px; }
+  .acceso.cliente { border-color:var(--naranja); } .acceso:hover { box-shadow:0 6px 18px rgba(31,56,100,.12); }
+  .paso { display:flex; align-items:center; gap:4px; }
+  .paso button { width:34px; height:34px; border-radius:8px; border:1px solid var(--azul2); background:#fff; color:var(--azul2); font-size:18px; cursor:pointer; }
+  .paso input { width:62px; text-align:center; }
+  tr.falla td { background:#fdecea; }
+  .tl { list-style:none; padding:0 0 0 4px; margin:8px 0 4px; border-left:3px solid var(--borde); }
+  .tl li { position:relative; padding:6px 0 6px 16px; }
+  .tl li::before { content:''; position:absolute; left:-8px; top:12px; width:12px; height:12px; border-radius:50%; background:var(--azul2); }
+  .tl li.ultimo::before { background:var(--naranja); }
+  .tl .h { color:var(--suave); font-size:12px; } .tl .t { font-weight:600; } .tl .d { font-size:13px; }
+  @media (max-width: 600px) { table { display:block; overflow-x:auto; white-space:nowrap; } main { padding:12px; } }
+  .nota { background:#eef4fb; border:1px solid #cfe0f3; padding:8px 10px; border-radius:8px; font-size:13px; color:#25466e; }
 </style>
 </head>
 <body>
 <header>
-  <h1>Express<b>YA</b> · Demostración</h1>
+  <img src="/app/logo.png" alt="ExpressYA · Equipo Dinamita" class="logo" onclick="vista('inicio')" title="Inicio">
+  <h1>Express<b>YA</b></h1>
   <span class="muted" style="color:#c9d6ea">Equipo 02 · Dinamita</span>
-  <nav><button id="tab-cliente" class="activo" onclick="vista('cliente')">Cliente</button>
-       <button id="tab-tienda" onclick="vista('tienda')">Tienda</button></nav>
+  <nav><span id="vivo" class="vivo oculto"></span>
+       <button id="btn-inicio" class="oculto" onclick="vista('inicio')">Cambiar de acceso</button></nav>
 </header>
 <main>
-  <div class="demo">Ambiente de prueba. El registro es <b>simulado</b> (no hay contraseña ni cuenta real) y la pasarela de pago es simulada. La reserva dura exactamente 5 minutos.</div>
+  <div class="demo">Ambiente de prueba. Los accesos son <b>simulados</b> (sin contraseña) y la pasarela de pago es simulada. El inventario, la reserva de 5 minutos y los estados del pedido son reales y se actualizan en vivo.</div>
+
+  <!-- ===================================================== INICIO -->
+  <section id="v-inicio">
+    <div class="portada">
+      <img src="/app/logo.png" alt="ExpressYA" class="logo-grande">
+      <p class="muted">¿Cómo quieres entrar?</p>
+      <div class="accesos">
+        <button class="acceso cliente" onclick="vista('cliente')"><b>Soy cliente</b><span>Comprar en mi zona, pagar y seguir mi pedido en tiempo real</span></button>
+        <button class="acceso" onclick="vista('tienda')"><b>Personal de tienda</b><span>Picker · Supervisor · Encargado · Auditor (acceso simulado)</span></button>
+      </div>
+    </div>
+  </section>
 
   <!-- ===================================================== CLIENTE -->
-  <section id="v-cliente">
+  <section id="v-cliente" class="oculto">
     <div id="registro" class="tarjeta" style="max-width:520px">
       <h2>Crear cuenta</h2>
-      <p class="muted">Regístrate para ver los productos disponibles en tu zona.</p>
+      <p class="muted">Regístrate para ver los productos disponibles en tu zona. (Registro simulado: no se pide contraseña.)</p>
       <div style="display:grid; gap:10px">
         <div><label>Nombre</label><input id="r-nombre" style="width:100%" placeholder="Ana López"></div>
-        <div><label>Correo</label><input id="r-correo" style="width:100%" placeholder="ana@correo.com"></div>
+        <div><label>Correo (opcional)</label><input id="r-correo" style="width:100%" placeholder="ana@correo.com"></div>
         <div><label>Código postal de entrega</label><select id="r-cp" style="width:100%"></select></div>
         <button class="btn naranja" onclick="registrar()">Crear cuenta y entrar</button>
       </div>
@@ -72,7 +106,9 @@
           <button class="btn sec" onclick="salirCliente()">Salir</button></div>
       </div>
       <div class="dos">
-        <div class="tarjeta"><h2>Productos</h2><div id="catalogo" class="rejilla"></div></div>
+        <div class="tarjeta"><h2>Productos</h2>
+          <p class="muted" style="margin-top:0">Elige la cantidad con − / + o escríbela. La disponibilidad se actualiza sola; el apartado real se decide al comprar.</p>
+          <div id="catalogo" class="rejilla"></div></div>
         <div>
           <div class="tarjeta" id="carrito-tarjeta">
             <h2>Carrito</h2>
@@ -95,7 +131,6 @@
         </div>
       </div>
       <div class="tarjeta"><h2>Mis pedidos</h2>
-        <div class="fila" style="margin-bottom:8px"><button class="btn sec" onclick="misPedidos()">Actualizar</button></div>
         <div id="mis-pedidos"></div>
         <div id="detalle-pedido"></div>
       </div>
@@ -152,13 +187,13 @@ const borrar = (k) => { delete memoria[k]; try { localStorage.removeItem('ey_' +
 const $ = (id) => document.getElementById(id);
 const dinero = (x) => Number(x || 0).toFixed(2);
 const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : 'k-' + Date.now() + '-' + Math.random().toString(16).slice(2));
-const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const ESTADOS = { RESERVADO: 'aviso', PAGADO: 'ok', EN_PREPARACION: 'aviso', COMPLETO: 'ok', PARCIAL: 'aviso', NO_PAGADO: 'mal',
-  CANCELADO_TOTAL: 'mal', PAGO_INCIERTO: 'aviso', PAGO_SIN_EXISTENCIA: 'mal', ESPERANDO_DECISION: 'mal', NORMAL: 'ok',
-  EN_VERIFICACION: 'mal', SOBRECOMPROMETIDA: 'mal', SURTIDA: 'ok', SURTIDA_PARCIAL: 'aviso', CANCELADA: 'mal', FALTANTE_REPORTADO: 'mal' };
+  CANCELADO_TOTAL: 'mal', PAGO_INCIERTO: 'aviso', PAGO_SOLICITADO: 'aviso', PAGO_SIN_EXISTENCIA: 'mal', ESPERANDO_DECISION: 'mal',
+  RESERVA_VENCIDA: 'mal', REEMBOLSADO: 'ok', NORMAL: 'ok', EN_VERIFICACION: 'mal', SOBRECOMPROMETIDA: 'mal', SURTIDA: 'ok',
+  SURTIDA_PARCIAL: 'aviso', CANCELADA: 'mal', FALTANTE_REPORTADO: 'mal' };
 const chip = (e) => `<span class="chip ${ESTADOS[e] || ''}">${esc(e)}</span>`;
-const NOMBRES = { CANCELACION_PARCIAL: 'Se canceló parte de tu pedido', REEMBOLSO_CONFIRMADO: 'Reembolso confirmado',
-  PEDIDO_CONFIRMADO: 'Pedido confirmado', CANCELACION_TOTAL: 'Tu pedido se canceló', ALERTA_OPERATIVA: 'Alerta operativa' };
+const hora = (t) => new Date(t).toLocaleTimeString();
 
 function aviso(texto, tipo = 'ok') {
   const t = $('toast'); t.textContent = texto; t.style.background = tipo === 'mal' ? '#c62828' : tipo === 'aviso' ? '#b26a00' : '#1a7f37';
@@ -176,9 +211,34 @@ async function api(metodo, ruta, { token, cuerpo, clave } = {}) {
 }
 const sesion = async (rol, nombre, extra = {}) => api('POST', '/v1/demo/sesion', { cuerpo: { rol, nombre, ...extra } });
 
+// ---------------------------------------------------------------- navegación: dos accesos desde el inicio
 function vista(v) {
-  ['cliente', 'tienda'].forEach((x) => { $('v-' + x).classList.toggle('oculto', x !== v); $('tab-' + x).classList.toggle('activo', x === v); });
+  ['inicio', 'cliente', 'tienda'].forEach((x) => $('v-' + x).classList.toggle('oculto', x !== v));
+  $('btn-inicio').classList.toggle('oculto', v === 'inicio');
+  if (location.hash !== '#' + v) history.replaceState(null, '', '#' + v);
+  VIVO.vista = v; vivo();
 }
+
+// ---------------------------------------------------------------- tiempo real (sondeo ligero, solo con la pestaña visible)
+// Cada consulta mantiene encendido el contenedor de core; por eso se pausa al ocultar la pestaña y el seguimiento
+// de un pedido termina cuando ya no tiene cambios pendientes o a los 15 minutos.
+const CADA = { catalogo: 15000, pedidos: 10000, detalle: 3000 };
+const LIMITE_SEGUIMIENTO_MS = 15 * 60 * 1000;
+const VIVO = { vista: 'inicio', detalle: null, desde: 0, timers: [] };
+function vivo() {
+  VIVO.timers.forEach(clearInterval); VIVO.timers = [];
+  const enCliente = VIVO.vista === 'cliente' && !!cliente();
+  $('vivo').classList.toggle('oculto', !enCliente);
+  if (!enCliente) return;
+  if (document.hidden) { $('vivo').textContent = '❚❚ En pausa'; $('vivo').classList.add('pausa'); return; }
+  $('vivo').classList.remove('pausa'); marcarVivo();
+  cargarCatalogo(true); misPedidos(true); if (VIVO.detalle) verPedido(VIVO.detalle, true);
+  VIVO.timers.push(setInterval(() => cargarCatalogo(true), CADA.catalogo));
+  VIVO.timers.push(setInterval(() => misPedidos(true), CADA.pedidos));
+  VIVO.timers.push(setInterval(() => { if (VIVO.detalle) verPedido(VIVO.detalle, true); }, CADA.detalle));
+}
+const marcarVivo = () => { $('vivo').textContent = '● En vivo · ' + new Date().toLocaleTimeString(); };
+document.addEventListener('visibilitychange', vivo);
 
 // ---------------------------------------------------------------- arranque
 let TIENDAS = [], PRODUCTOS = [];
@@ -191,64 +251,117 @@ async function iniciar() {
   } catch (e) { aviso('No se pudo cargar la lista de tiendas: ' + e.message, 'mal'); }
   const c = leer('cliente');
   if (c) mostrarTiendaCliente(c);
+  const h = location.hash.slice(1);
+  vista(['cliente', 'tienda'].includes(h) ? h : 'inicio');
 }
 
-// ---------------------------------------------------------------- cliente
+// ---------------------------------------------------------------- cliente: registro (simulado)
 async function registrar() {
   const nombre = $('r-nombre').value.trim(), correo = $('r-correo').value.trim(), cp = $('r-cp').value;
   if (nombre.length < 2) return aviso('Escribe tu nombre', 'aviso');
   try {
     const s = await sesion('CLIENTE', nombre, { correo: correo || null });
-    const c = { ...s, correo, cp }; guardar('cliente', c); mostrarTiendaCliente(c);
+    const c = { ...s, correo, cp }; guardar('cliente', c); mostrarTiendaCliente(c); vivo();
     aviso('Cuenta creada. ¡Bienvenido, ' + nombre + '!');
   } catch (e) { aviso(e.message, 'mal'); }
 }
-function salirCliente() { borrar('cliente'); borrar('carrito'); location.reload(); }
+function salirCliente() { ['cliente', 'carrito', 'reserva', 'clave_checkout'].forEach(borrar); location.hash = '#inicio'; location.reload(); }
 function cliente() { return leer('cliente'); }
 
 function mostrarTiendaCliente(c) {
   $('registro').classList.add('oculto'); $('tienda-cliente').classList.remove('oculto');
   $('c-nombre').textContent = c.nombre; $('c-cp').textContent = c.cp;
   cargarCatalogo(); misPedidos(); pintarCarrito();
+  const r = leer('reserva');
+  if (r && new Date(r.expira) > new Date()) { RESERVA = { ...r, expira: new Date(r.expira) }; mostrarReserva(); }
 }
 
-async function cargarCatalogo() {
+// ---------------------------------------------------------------- cliente: catálogo con cantidad manual
+const LIMITE_API = 99;                     // LineaEntrada.cantidad ≤ 99
+const SEL = {};                            // cantidad elegida en cada tarjeta (antes de agregar)
+const prod = (sku) => PRODUCTOS.find((x) => x.sku === sku);
+const maximo = (p) => (p ? Math.max(0, Math.min(Number(p.disponible) || 0, LIMITE_API)) : LIMITE_API);
+
+async function cargarCatalogo(silencioso = false) {
+  if (!cliente()) return;
   try {
     const d = await api('GET', '/v1/catalogo?codigo_postal=' + cliente().cp);
     PRODUCTOS = d.productos;
     $('c-tiendas').textContent = '(te surte: ' + d.tiendas.map((t) => t.nombre + ' a ' + t.distancia_km + ' km').join(', ') + ')';
-    $('catalogo').innerHTML = PRODUCTOS.map((p) => `
-      <div class="producto">
-        <div class="nombre">${esc(p.descripcion)}</div><div class="muted">${esc(p.sku)}</div>
-        <div class="precio">$${dinero(p.precio)}</div>
-        <div>${p.bloqueado ? '<span class="chip mal">En verificación</span>' : p.disponible > 0
-          ? `<span class="chip ok">${p.disponible} disponibles</span>` : '<span class="chip mal">Agotado</span>'}</div>
-        <button class="btn" ${p.disponible > 0 ? '' : 'disabled'} onclick="agregar('${p.sku}')">Agregar</button>
-      </div>`).join('');
-    pintarCarrito();
-  } catch (e) { $('catalogo').innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
+    const escribiendo = document.activeElement && document.activeElement.closest && document.activeElement.closest('#catalogo');
+    if (!escribiendo) pintarCatalogo();
+    pintarCarrito(); if (silencioso) marcarVivo();
+  } catch (e) { if (!silencioso) $('catalogo').innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
+}
+function pintarCatalogo() {
+  $('catalogo').innerHTML = PRODUCTOS.map((p) => {
+    const m = maximo(p), q = Math.min(SEL[p.sku] || 1, Math.max(m, 1));
+    const estado = p.bloqueado ? '<span class="chip mal">En verificación</span>'
+      : m > 0 ? `<span class="chip ok">${p.disponible} disponibles</span>` : '<span class="chip mal">Agotado</span>';
+    return `<div class="producto">
+      <div class="nombre">${esc(p.descripcion)}</div><div class="muted">${esc(p.sku)}</div>
+      <div class="precio">$${dinero(p.precio)}</div><div>${estado}</div>
+      ${m > 0 ? `<div class="paso"><button aria-label="Menos" onclick="paso('${p.sku}', -1)">−</button>
+        <input id="cq-${p.sku}" type="number" inputmode="numeric" min="1" max="${m}" value="${q}" aria-label="Cantidad de ${esc(p.descripcion)}"
+               onchange="fijar('${p.sku}')"><button aria-label="Más" onclick="paso('${p.sku}', 1)">+</button></div>
+        <button class="btn" onclick="agregar('${p.sku}')">Agregar al carrito</button>`
+        : '<button class="btn" disabled>Sin existencia</button>'}
+    </div>`;
+  }).join('');
+}
+function paso(sku, d) {
+  const m = Math.max(1, maximo(prod(sku)));
+  SEL[sku] = Math.min(Math.max(1, (SEL[sku] || 1) + d), m);
+  if (d > 0 && SEL[sku] === m && (SEL[sku] || 1) >= m) aviso('Es el máximo disponible ahora', 'aviso');
+  $('cq-' + sku).value = SEL[sku];
+}
+function fijar(sku) {
+  const p = prod(sku), m = Math.max(1, maximo(p));
+  let v = parseInt($('cq-' + sku).value, 10);
+  if (!Number.isFinite(v) || v < 1) v = 1;
+  if (v > m) { v = m; aviso(`Solo hay ${m} disponibles ahora de ${p.descripcion}`, 'aviso'); }
+  SEL[sku] = v; $('cq-' + sku).value = v;
 }
 
 function carrito() { return leer('carrito') || {}; }
+let FALLAS = {};                            // sku → motivo, cuando el checkout no pudo apartar esa línea
+function cambioCarrito(c) { guardar('carrito', c); borrar('clave_checkout'); FALLAS = {}; pintarCarrito(); }
 function agregar(sku) {
-  const c = carrito(), p = PRODUCTOS.find((x) => x.sku === sku);
-  if ((c[sku] || 0) + 1 > p.disponible) return aviso('No hay más unidades disponibles de ' + p.descripcion, 'aviso');
-  c[sku] = (c[sku] || 0) + 1; guardar('carrito', c); borrar('clave_checkout'); pintarCarrito();
+  fijar(sku);
+  const p = prod(sku), c = carrito(), m = maximo(p), pedido = SEL[sku] || 1;
+  if ((c[sku] || 0) + pedido > m) {
+    c[sku] = m; aviso(`Ajusté ${p.descripcion} a ${m}: es lo disponible ahora`, 'aviso');
+  } else { c[sku] = (c[sku] || 0) + pedido; aviso(`${pedido} × ${p.descripcion} en tu carrito`); }
+  SEL[sku] = 1; cambioCarrito(c); pintarCatalogo();
 }
-function quitar(sku) { const c = carrito(); if (--c[sku] <= 0) delete c[sku]; guardar('carrito', c); borrar('clave_checkout'); pintarCarrito(); }
+function cambiar(sku, valor) {
+  const c = carrito(), m = maximo(prod(sku));
+  let v = parseInt(valor, 10);
+  if (!Number.isFinite(v)) v = c[sku] || 1;
+  if (v <= 0) { delete c[sku]; return cambioCarrito(c); }
+  if (v > m) { v = m; aviso(`Solo hay ${m} disponibles ahora`, 'aviso'); }
+  c[sku] = v; cambioCarrito(c);
+}
+function quitar(sku) { const c = carrito(); delete c[sku]; cambioCarrito(c); }
 function pintarCarrito() {
-  const c = carrito(); const items = Object.entries(c);
+  const items = Object.entries(carrito());
   let sub = 0;
   $('carrito').innerHTML = items.length ? '<table>' + items.map(([sku, q]) => {
-    const p = PRODUCTOS.find((x) => x.sku === sku) || { descripcion: sku, precio: 0 }; sub += p.precio * q;
-    return `<tr><td>${esc(p.descripcion)}</td><td>× ${q}</td><td>$${dinero(p.precio * q)}</td>
-            <td><button class="btn sec" onclick="quitar('${sku}')">−</button></td></tr>`;
+    const p = prod(sku) || { descripcion: sku, precio: 0, disponible: q }, m = maximo(prod(sku)); sub += p.precio * q;
+    const nota = FALLAS[sku] ? `<div class="linea-evt" style="color:#c62828">${esc(FALLAS[sku])}</div>`
+      : (prod(sku) && q > m ? `<div class="linea-evt" style="color:#b26a00">Ahora solo hay ${m} disponibles</div>` : '');
+    return `<tr class="${FALLAS[sku] ? 'falla' : ''}"><td>${esc(p.descripcion)}${nota}</td>
+      <td><div class="paso"><button aria-label="Menos" onclick="cambiar('${sku}', ${q - 1})">−</button>
+        <input type="number" inputmode="numeric" min="1" max="${m}" value="${q}" aria-label="Cantidad en el carrito"
+               onchange="cambiar('${sku}', this.value)"><button aria-label="Más" onclick="cambiar('${sku}', ${q + 1})">+</button></div></td>
+      <td>$${dinero(p.precio * q)}</td><td><button class="btn sec" onclick="quitar('${sku}')">Quitar</button></td></tr>`;
   }).join('') + '</table>' : '<p class="muted">Tu carrito está vacío. Agregar al carrito no aparta productos: la reserva empieza al comprar.</p>';
   $('total').textContent = dinero(items.length ? sub + 35 + Number($('propina').value) : 0);
   $('btn-comprar').disabled = !items.length;
 }
 $('propina') && document.addEventListener('change', (e) => { if (e.target.id === 'propina') pintarCarrito(); });
 
+// ---------------------------------------------------------------- cliente: reserva y pago
 let RESERVA = null, RELOJ = null;
 async function comprar() {
   const lineas = Object.entries(carrito()).map(([sku, cantidad]) => ({ sku, cantidad }));
@@ -257,14 +370,20 @@ async function comprar() {
   try {
     const p = await api('POST', '/v1/pedidos', { token: cliente().token, clave,
       cuerpo: { codigo_postal: cliente().cp, lineas, envio: 35, propina: Number($('propina').value) } });
-    RESERVA = { pedido_id: p.pedido_id, expira: new Date(p.reserva.expira_en), total: p.total, tienda: p.tienda_id };
-    guardar('carrito', {}); borrar('clave_checkout'); pintarCarrito(); mostrarReserva();
+    // Cuenta regresiva relativa a la respuesta del servidor (no depende del reloj del teléfono)
+    const ms = new Date(p.reserva.expira_en) - new Date(p.reserva.creada_en || Date.now());
+    RESERVA = { pedido_id: p.pedido_id, expira: new Date(Date.now() + (ms > 0 ? ms : 300000)), total: p.total, tienda: p.tienda_id };
+    guardar('reserva', RESERVA); guardar('carrito', {}); borrar('clave_checkout'); FALLAS = {}; pintarCarrito(); mostrarReserva();
     aviso('Reserva creada: tienes 5 minutos para pagar');
+    verPedido(p.pedido_id);
   } catch (e) {
     borrar('clave_checkout');
-    if (e.status === 409) aviso('No se reservó nada: ' + (e.datos.code === 'SKU_BLOQUEADO' ? 'un producto está en verificación'
-      : 'un producto se agotó') + '. Revisa el carrito.', 'aviso');
-    else aviso(e.message, 'mal');
+    if (e.status === 409 && Array.isArray(e.datos.lineas)) {
+      FALLAS = Object.fromEntries(e.datos.lineas.map((l) => [l.sku, l.estado
+        ? 'En verificación en la tienda: no se puede apartar ahora'
+        : `Pediste ${l.solicitada}; disponibles ${l.disponible}`]));
+      aviso('No se apartó nada: revisa las líneas marcadas en rojo', 'aviso');
+    } else aviso(e.message, 'mal');
     cargarCatalogo();
   } finally { pintarCarrito(); misPedidos(); }
 }
@@ -276,50 +395,73 @@ function mostrarReserva() {
     const s = Math.max(0, Math.floor((RESERVA.expira - Date.now()) / 1000));
     $('contador').textContent = String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
     $('contador').classList.toggle('poco', s < 60);
-    if (s === 0) { clearInterval(RELOJ); $('btn-pagar').disabled = true; aviso('La reserva venció: las unidades se liberaron', 'aviso'); cargarCatalogo(); }
+    if (s === 0) { clearInterval(RELOJ); $('btn-pagar').disabled = true; borrar('reserva');
+      aviso('La reserva venció: las unidades se liberaron', 'aviso'); cargarCatalogo(); misPedidos(); }
   };
   tic(); RELOJ = setInterval(tic, 250);
 }
-function abandonar() { clearInterval(RELOJ); $('reserva').classList.add('oculto'); RESERVA = null; aviso('La reserva vencerá sola a los 5 minutos', 'aviso'); }
+function abandonar() { clearInterval(RELOJ); $('reserva').classList.add('oculto'); RESERVA = null; borrar('reserva');
+  aviso('La reserva vencerá sola a los 5 minutos', 'aviso'); }
+async function continuarPago(id) {
+  try {
+    const h = await api('GET', `/v1/pedidos/${id}/bitacora`, { token: cliente().token });
+    if (!h.reserva || !h.reserva.vigente) return aviso('La reserva ya venció; no se hizo ningún cobro', 'aviso');
+    RESERVA = { pedido_id: id, expira: new Date(Date.now() + h.reserva.segundos_restantes * 1000), total: h.total, tienda: h.tienda_id };
+    guardar('reserva', RESERVA); mostrarReserva(); $('reserva').scrollIntoView({ behavior: 'smooth' });
+  } catch (e) { aviso(e.message, 'mal'); }
+}
 async function pagar() {
+  const id = RESERVA.pedido_id;
   $('btn-pagar').disabled = true; $('btn-pagar').textContent = 'Procesando…';
   try {
-    const r = await api('POST', `/v1/pedidos/${RESERVA.pedido_id}/pago`, { token: cliente().token, clave: 'K2-' + uuid() });
-    clearInterval(RELOJ); $('reserva').classList.add('oculto');
-    if (r.estado === 'PAGADO') aviso('¡Pago aprobado! Tu pedido está confirmado');
+    const r = await api('POST', `/v1/pedidos/${id}/pago`, { token: cliente().token, clave: 'K2-' + uuid() });
+    clearInterval(RELOJ); $('reserva').classList.add('oculto'); borrar('reserva');
+    if (r.estado === 'PAGADO') aviso('¡Pago aprobado! Sigue tu pedido en vivo en «Mis pedidos»');
     else if (r.estado === 'PAGO_INCIERTO') aviso('El pago está en revisión: no se te cobrará dos veces', 'aviso');
     else aviso('Resultado del pago: ' + r.estado, 'mal');
   } catch (e) { aviso(e.datos?.code === 'RESERVA_VENCIDA' ? 'La reserva venció antes de pagar; no se hizo ningún cobro' : e.message, 'mal'); }
-  finally { $('btn-pagar').textContent = 'Pagar'; misPedidos(); cargarCatalogo(); }
+  finally { $('btn-pagar').textContent = 'Pagar'; misPedidos(); cargarCatalogo(); verPedido(id); }
 }
 
-async function misPedidos() {
+// ---------------------------------------------------------------- cliente: mis pedidos y bitácora en vivo
+async function misPedidos(silencioso = false) {
+  if (!cliente()) return;
   try {
     const d = await api('GET', '/v1/clientes/me/pedidos', { token: cliente().token });
     $('mis-pedidos').innerHTML = d.pedidos.length ? '<table><tr><th>Pedido</th><th>Fecha</th><th>Tienda</th><th>Total</th><th>Estado</th><th></th></tr>' +
       d.pedidos.map((p) => `<tr><td><code>${p.pedido_id.slice(0, 8)}</code></td><td>${new Date(p.creado_en).toLocaleString()}</td>
         <td>${p.tienda_id}</td><td>$${dinero(p.total)}</td><td>${chip(p.estado)}</td>
-        <td><button class="btn sec" onclick="verPedido('${p.pedido_id}')">Ver</button></td></tr>`).join('') + '</table>'
+        <td class="fila"><button class="btn sec" onclick="verPedido('${p.pedido_id}')">Ver</button>
+          ${p.estado === 'RESERVADO' ? `<button class="btn naranja" onclick="continuarPago('${p.pedido_id}')">Pagar</button>` : ''}</td></tr>`).join('') + '</table>'
       : '<p class="muted">Aún no tienes pedidos.</p>';
-  } catch (e) { $('mis-pedidos').innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
+    if (silencioso) marcarVivo();
+  } catch (e) { if (!silencioso) $('mis-pedidos').innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
 }
-async function verPedido(id) {
-  try {
-    const h = await api('GET', `/v1/pedidos/${id}/historial`, { token: cliente().token });
-    const nombre = (sku) => (PRODUCTOS.find((p) => p.sku === sku) || {}).descripcion || sku;
-    const avisos = [...new Map(h.notificaciones.map((n) => [n.tipo + JSON.stringify(n.datos), n])).values()];
-    $('detalle-pedido').innerHTML = `<hr><h3 style="margin:8px 0">Pedido <code>${id.slice(0, 8)}</code> ${chip(h.estado)}</h3>
-      <table><tr><th>Producto</th><th>Pedidas</th><th>Surtidas</th><th>Canceladas</th><th>Estado</th></tr>
-      ${h.lineas.map((l) => `<tr><td>${esc(nombre(l.sku))}</td><td>${l.cantidad_pedida}</td><td>${l.cantidad_surtida}</td><td>${l.cantidad_cancelada}</td><td>${chip(l.estado)}</td></tr>`).join('')}</table>
-      <p>Total cobrado $${dinero(h.total)} · Mercancía $${dinero(h.subtotal_mercancia)} · Envío $${dinero(h.envio)} · Propina $${dinero(h.propina)}</p>
-      <b>Avisos</b>${avisos.length ? '<ul>' + avisos.map((n) => `<li>${esc(NOMBRES[n.tipo] || n.tipo)}${n.datos.reembolso || n.datos.monto
-        ? ' · $' + dinero(n.datos.reembolso || n.datos.monto) : ''} <span class="linea-evt">${new Date(n.creada_en).toLocaleTimeString()}</span></li>`).join('') + '</ul>'
-        : '<p class="muted">Sin avisos todavía.</p>'}
-      <details><summary class="muted">Bitácora del pedido (${h.eventos.length} eventos)</summary><ul>
-        ${h.eventos.map((e) => `<li class="linea-evt">${new Date(e.hora_servidor).toLocaleTimeString()} · ${esc(e.tipo)}</li>`).join('')}</ul></details>`;
-  } catch (e) { aviso(e.message, 'mal'); }
+function cerrarPedido() { VIVO.detalle = null; $('detalle-pedido').innerHTML = ''; }
+async function verPedido(id, silencioso = false) {
+  if (!silencioso) { VIVO.detalle = id; VIVO.desde = Date.now(); }
+  let h;
+  try { h = await api('GET', `/v1/pedidos/${id}/bitacora`, { token: cliente().token }); }
+  catch (e) { if (!silencioso) aviso(e.message, 'mal'); return; }
+  if (VIVO.detalle !== id && silencioso) return;
+  const vencido = Date.now() - VIVO.desde > LIMITE_SEGUIMIENTO_MS;
+  if (!h.en_curso || vencido) VIVO.detalle = null;          // ya no hay cambios pendientes: se deja de consultar
+  const seguimiento = VIVO.detalle === id ? 'se actualiza sola cada 3 s' : vencido ? 'seguimiento pausado: pulsa «Ver» para reanudar' : 'sin cambios pendientes';
+  const r = h.reserva && h.reserva.vigente
+    ? `<p class="nota">Reserva vigente: quedan ${Math.floor(h.reserva.segundos_restantes / 60)}:${String(h.reserva.segundos_restantes % 60).padStart(2, '0')} · <a href="#cliente" onclick="continuarPago('${id}'); return false">pagar ahora</a></p>` : '';
+  const espera = ['PARCIAL', 'CANCELADO_TOTAL', 'PAGO_SIN_EXISTENCIA'].includes(h.estado) && !h.reembolso_confirmado
+    ? '<p class="nota">El reembolso queda confirmado cuando el servicio de Pagos lo aplica. En el ambiente de prueba ese paso corre cada pocos minutos.</p>' : '';
+  $('detalle-pedido').innerHTML = `<hr><div class="fila" style="justify-content:space-between">
+      <h3 style="margin:8px 0">Pedido <code>${id.slice(0, 8)}</code> ${chip(h.estado)} <span class="muted">${esc(h.estado_texto)}</span></h3>
+      <button class="btn sec" onclick="cerrarPedido()">Cerrar</button></div>${r}
+    <table><tr><th>Producto</th><th>Pedidas</th><th>Listas</th><th>Canceladas</th><th>Estado</th></tr>
+      ${h.lineas.map((l) => `<tr><td>${esc(l.descripcion)} <span class="muted">${esc(l.sku)}</span></td><td>${l.pedidas}</td><td>${l.surtidas}</td><td>${l.canceladas}</td><td>${chip(l.estado)}</td></tr>`).join('')}</table>
+    <p>Total $${dinero(h.total)} · Mercancía $${dinero(h.subtotal_mercancia)} · Envío $${dinero(h.envio)} · Propina $${dinero(h.propina)}</p>
+    <b>Bitácora del pedido</b> <span class="muted">(${h.eventos.length} movimientos · ${seguimiento})</span>
+    <ul class="tl">${h.eventos.map((e, i) => `<li class="${i === h.eventos.length - 1 ? 'ultimo' : ''}"><div class="h">${hora(e.hora)}</div>
+      <div class="t">${esc(e.titulo)}</div><div class="d">${esc(e.detalle)}</div></li>`).join('')}</ul>${espera}`;
+  if (silencioso) marcarVivo();
 }
-
 // ---------------------------------------------------------------- tienda
 let STAFF = null;
 async function entrarTienda() {

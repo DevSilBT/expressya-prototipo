@@ -97,6 +97,19 @@ paths:
       responses:
         '200': { description: Pedido, content: { application/json: { schema: { $ref: '#/components/schemas/Pedido' } } } }
         '404': { description: No encontrado, content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problema' } } } }
+  /v1/pedidos/{pedido_id}/bitacora:
+    get:
+      tags: [Pedidos (M2)]
+      operationId: bitacoraCliente
+      summary: API-PED-10 BitacoraCliente (tiempo real desde la bandeja de salida; sin datos internos del personal)
+      description: >-
+        Estado del pedido en lenguaje claro, líneas con descripción, reserva con segundos restantes según el reloj del servidor
+        y línea de tiempo (pedido, reserva, pago, preparación, faltantes, reembolsos). El cliente solo ve sus pedidos (404 si no
+        es suyo). en_curso=false indica que ya no habrá cambios y la interfaz deja de consultar.
+      parameters: [ { $ref: '#/components/parameters/PedidoId' } ]
+      responses:
+        '200': { description: Bitácora del cliente, content: { application/json: { schema: { type: object } } } }
+        '404': { description: No encontrado, content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problema' } } } }
   /v1/pedidos/{pedido_id}/pago:
     post:
       tags: [Pedidos (M2)]

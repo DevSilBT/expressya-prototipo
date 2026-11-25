@@ -90,3 +90,52 @@ def test_flujo_de_la_pantalla_cliente_y_tienda(pagos_falso):
                      json={"aprobar": True, "evidencia": "Reconteo verificado"})
     assert a.status_code == 200 and a.json()["vendible"] == 9, a.text
     assert cliente.get("/v1/tiendas/5/ajustes-inventario", headers=sup).json()["ajustes"] == []
+
+
+# ---------------------------------------------------------------- cliente en tiempo real (ADR-29 propuesto)
+INTERNOS = ("picker_id", "supervisor_id", "evidencia", "correlacion_id", "actor")
+
+
+def test_logo_y_portada_con_dos_accesos():
+    r = cliente.get("/app/logo.png")
+    assert r.status_code == 200 and r.headers["content-type"] == "image/png" and len(r.content) > 1000
+    html = cliente.get("/app").text
+    assert "Soy cliente" in html and "Personal de tienda" in html and "/app/logo.png" in html
+
+
+def test_bitacora_cliente_en_tiempo_real(pagos_falso):
+    """La bitácora del cliente lee la bandeja de salida: ve la reserva y el pago sin esperar al worker, sin datos internos."""
+    cli = sesion("CLIENTE", "Lucía")
+    r = cliente.post("/v1/pedidos", headers={**cli, **clave("K1")},
+                     json={"codigo_postal": "53400", "lineas": [{"sku": "SKU-Z", "cantidad": 1}], "envio": 35, "propina": 10})
+    assert r.status_code == 201, r.text
+    pid = r.json()["pedido_id"]
+    b = cliente.get(f"/v1/pedidos/{pid}/bitacora", headers=cli).json()
+    assert b["estado"] == "RESERVADO" and b["reserva"]["vigente"] and 0 < b["reserva"]["segundos_restantes"] <= 300
+    assert [e["tipo"] for e in b["eventos"]] == ["PedidoCreado", "ReservaCreada"]
+    assert b["lineas"][0]["descripcion"] == "Producto de prueba Z"
+
+    assert cliente.get(f"/v1/pedidos/{pid}/bitacora", headers=sesion("CLIENTE", "Otra")).status_code == 404   # RNF06
+    assert cliente.get("/v1/pedidos/no-es-uuid/bitacora", headers=cli).status_code == 404
+    assert cliente.get(f"/v1/pedidos/{pid}/bitacora").status_code == 401
+
+    assert cliente.post(f"/v1/pedidos/{pid}/pago", headers={**cli, **clave("K2")}).json()["estado"] == "PAGADO"
+    b = cliente.get(f"/v1/pedidos/{pid}/bitacora", headers=cli).json()
+    tipos = [e["tipo"] for e in b["eventos"]]
+    assert {"PagoSolicitado", "PagoResultado", "ReservaConfirmada"} <= set(tipos) and tipos.count("PagoResultado") == 1
+    assert b["estado"] == "PAGADO" and b["en_curso"]
+    assert not any(f'"{k}"' in cliente.get(f"/v1/pedidos/{pid}/bitacora", headers=cli).text for k in INTERNOS)
+
+
+def test_bitacora_cliente_reserva_vencida_sin_esperar_al_job(pagos_falso):
+    cli = sesion("CLIENTE", "Pablo")
+    pid = cliente.post("/v1/pedidos", headers={**cli, **clave("K1")},
+                       json={"codigo_postal": "53400", "lineas": [{"sku": "SKU-B", "cantidad": 1}]}).json()["pedido_id"]
+    from app.db import transaccion
+    with transaccion() as conn:
+        conn.execute("""UPDATE inventario.reserva SET creada_en = now() - interval '301 seconds',
+                        expira_en = now() - interval '1 second' WHERE pedido_id = %s""", (pid,))
+        conn.execute("""UPDATE inventario.reserva_linea SET expira_en = now() - interval '1 second'
+                        WHERE reserva_id IN (SELECT reserva_id FROM inventario.reserva WHERE pedido_id = %s)""", (pid,))
+    b = cliente.get(f"/v1/pedidos/{pid}/bitacora", headers=cli).json()
+    assert b["estado"] == "RESERVA_VENCIDA" and not b["en_curso"] and b["eventos"][-1]["tipo"] == "ReservaVencida"

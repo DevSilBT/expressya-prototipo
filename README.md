@@ -131,3 +131,29 @@ El mismo contenedor `core` sirve una pantalla en `/app` (sin servicios ni costo 
 
 La sesión de demostración (`POST /v1/demo/sesion`) emite un JWT por rol y **responde 404 cuando `AMBIENTE=produccion`**;
 el inicio de sesión real queda fuera del alcance actual (proveedor de identidad previsto en el SDD).
+
+### Cliente en tiempo real (ADR-29 propuesto, rama `cliente-tiempo-real`)
+
+Decisión del equipo: **la Tienda y el acceso administrativo siguen simulados** (sin contraseñas ni rol root, para no
+comprometer la integridad del proyecto); **el cliente se comporta como en operación real**:
+
+- Portada con dos accesos (Cliente / Personal de tienda) y logo (`GET /app/logo.png`).
+- Cantidad manual con − / + o escrita (máximo = disponible y 99); el carrito marca en rojo la línea exacta que no se pudo apartar.
+- **Bitácora del pedido en vivo**: `GET /v1/pedidos/{id}/bitacora` (API-PED-10) lee `comun.outbox`, que se escribe en la
+  misma transacción que cada cambio, así que el cliente ve reserva, pago, preparación, faltantes y reembolsos sin esperar
+  al worker. No expone identificadores del personal, evidencia ni correlación. Nuevos eventos `PagoSolicitado` y
+  `PagoResultado`; índice en la migración `007_bitacora_cliente.sql`.
+- La pantalla consulta cada 3 s (pedido abierto), 10 s (mis pedidos) y 15 s (catálogo) **solo con la pestaña visible**,
+  y deja de consultar cuando el pedido ya no tendrá cambios o a los 15 min (cada consulta mantiene encendido `core`).
+- La cuenta regresiva de 5 min se calcula con el reloj del servidor, no con el del teléfono.
+
+### Auditoría del ambiente de Azure (solo lectura)
+
+```bash
+bash infra/azure/auditar.sh             # recursos, versión (SHA), escalado, secretos (solo nombres), jobs, métricas de
+                                        # PostgreSQL, latencia/TLS, existencias de prueba y errores recientes
+bash infra/azure/auditar.sh --consumo   # además, proyección de la cuota gratuita (consumo.sh 24)
+```
+
+No crea, cambia ni borra recursos y no imprime valores de secretos. El informe queda en `infra/azure/auditoria_azure_<fecha>.txt`
+y termina con la lista de avisos.
